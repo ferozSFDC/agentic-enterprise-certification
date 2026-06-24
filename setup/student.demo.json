@@ -1,0 +1,72 @@
+{
+  "_comment": "DEMO credentials — fake values for dry-run testing",
+
+  "stable": {
+    "slack": {
+      "botToken": "xoxb-demo-token-for-dryrun-only",
+      "signingSecret": "demo-signing-secret",
+      "appId": "A0DEMO1234"
+    },
+    "salesforce": {
+      "dataCloud": {
+        "clientId": "demo-dc-client-id",
+        "clientSecret": "demo-dc-secret",
+        "tokenEndpoint": "https://login.salesforce.com/services/oauth2/token",
+        "instanceUrl": "https://demo-org.my.salesforce.com"
+      },
+      "serviceCloud": {
+        "clientId": "demo-sc-client-id",
+        "clientSecret": "demo-sc-secret",
+        "tokenEndpoint": "https://login.salesforce.com/services/oauth2/token",
+        "instanceUrl": "https://demo-org.my.salesforce.com"
+      }
+    },
+    "aws": {
+      "region": "us-east-2",
+      "accessKeyId": "AKIADEMO0000000DEMO",
+      "secretAccessKey": "demo/secret/access/key/for/dry/run/only",
+      "bedrock": {
+        "agentId": "DEMO1AGENT",
+        "agentAliasId": "DEMOALIAS1"
+      },
+      "lambda": {
+        "fraudScorerArn": "arn:aws:lambda:us-east-2:123456789012:function:Fraud_Scorer_Lambda",
+        "roleArn": "arn:aws:iam::123456789012:role/bedrock-lambda-role"
+      }
+    },
+    "aiGateway": {
+      "host": "https://demo-omni-gateway.cloudhub.io",
+      "clientId": "demo-gw-client-id",
+      "clientSecret": "demo-gw-secret"
+    },
+    "course": {
+      "jarReleaseTag": "course-v1.0",
+      "jarReleaseBaseUrl": "https://github.com/globaltech/agentic-enterprise-course/releases/download",
+      "goldenContactEmail": "sarah.chen@globaltech.com",
+      "goldenContactSlackEmail": "student-slack-test@globaltech.com"
+    }
+  },
+
+  "variable": {
+    "anypoint": {
+      "orgId": "5c822f38-4bc6-4f44-bcd1-cea546b0eb50",
+      "environmentId": "3e5e7901-d600-4433-aab8-3647e60063a8",
+      "username": "student@globaltech.com",
+      "password": "demo-password",
+      "exchange": {
+        "clientId": "5e543d82914c41e4af65f868fe6205c8",
+        "clientSecret": "4cb5D8a316c54127865eCAd2EF99435f"
+      }
+    },
+    "cloudHub": {
+      "region": "us-east-2",
+      "deploymentTargetName": "Sandbox"
+    },
+    "student": {
+      "email": "student@globaltech.com",
+      "name": "Demo Student",
+      "firstName": "Demo",
+      "lastName": "Student"
+    }
+  }
+}

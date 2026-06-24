@@ -1,0 +1,72 @@
+{
+  "_comment": "Copy this file to student.json. Fill in every empty string in the 'variable' section. The 'stable' section is pre-filled by ops — do not change it unless instructed.",
+
+  "stable": {
+    "slack": {
+      "botToken": "xoxb-REPLACE-WITH-OPS-VALUE",
+      "signingSecret": "REPLACE-WITH-OPS-VALUE",
+      "appId": "REPLACE-WITH-OPS-VALUE"
+    },
+    "salesforce": {
+      "dataCloud": {
+        "clientId": "REPLACE-WITH-OPS-VALUE",
+        "clientSecret": "REPLACE-WITH-OPS-VALUE",
+        "tokenEndpoint": "https://login.salesforce.com/services/oauth2/token",
+        "instanceUrl": "https://REPLACE.my.salesforce.com"
+      },
+      "serviceCloud": {
+        "clientId": "REPLACE-WITH-OPS-VALUE",
+        "clientSecret": "REPLACE-WITH-OPS-VALUE",
+        "tokenEndpoint": "https://login.salesforce.com/services/oauth2/token",
+        "instanceUrl": "https://REPLACE.my.salesforce.com"
+      }
+    },
+    "aws": {
+      "region": "us-east-2",
+      "accessKeyId": "REPLACE-WITH-OPS-VALUE",
+      "secretAccessKey": "REPLACE-WITH-OPS-VALUE",
+      "bedrock": {
+        "agentId": "REPLACE-WITH-OPS-VALUE",
+        "agentAliasId": "REPLACE-WITH-OPS-VALUE"
+      },
+      "lambda": {
+        "fraudScorerArn": "REPLACE-WITH-OPS-VALUE",
+        "roleArn": "REPLACE-WITH-OPS-VALUE"
+      }
+    },
+    "aiGateway": {
+      "host": "REPLACE-WITH-OPS-VALUE",
+      "clientId": "REPLACE-WITH-OPS-VALUE",
+      "clientSecret": "REPLACE-WITH-OPS-VALUE"
+    },
+    "course": {
+      "jarReleaseTag": "course-v1.0",
+      "jarReleaseBaseUrl": "https://github.com/REPLACE-ORG/agentic-enterprise-course/releases/download",
+      "goldenContactEmail": "sarah.chen@globaltech.com",
+      "goldenContactSlackEmail": "student-slack-test@globaltech.com"
+    }
+  },
+
+  "variable": {
+    "anypoint": {
+      "orgId": "",
+      "environmentId": "",
+      "username": "",
+      "password": "",
+      "exchange": {
+        "clientId": "",
+        "clientSecret": ""
+      }
+    },
+    "cloudHub": {
+      "region": "us-east-2",
+      "deploymentTargetName": ""
+    },
+    "student": {
+      "email": "",
+      "name": "",
+      "firstName": "",
+      "lastName": ""
+    }
+  }
+}

@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - CAT_DATABASE_URL=postgresql+asyncpg://cat:cat@db:5432/cat_engine
+      - CAT_DATABASE_URL_SYNC=postgresql://cat:cat@db:5432/cat_engine
+      - CAT_JWT_SECRET_KEY=change-in-production
+      - CAT_ADMIN_API_KEY=change-in-production
+      - CAT_DEBUG=true
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cat_engine
+      POSTGRES_USER: cat
+      POSTGRES_PASSWORD: cat
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cat -d cat_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
