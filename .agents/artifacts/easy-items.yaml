@@ -1,0 +1,266 @@
+# 12 Easy Items (b < -1.0)
+# Simple 1-2 sentence scenarios, basic pattern recognition
+
+  - id: "arch-004"
+    domain_id: 1
+    objective_id: "1.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.0
+    difficulty: -1.2
+    scenario: |
+      An API endpoint processes a refund request and returns HTTP 200 with body: {"status": "REJECTED", "reason": "Insufficient inventory"}.
+    stem: "Is this a technical failure or a business outcome?"
+    options:
+      - text: "Technical failure — HTTP 200 means success, but REJECTED indicates failure"
+        rationale: "HTTP 200 means the API executed successfully. The business decision (REJECTED) is separate from technical execution. This confuses business outcomes with technical failures."
+      - text: "Business outcome — the API executed successfully and returned a valid business decision"
+        rationale: "CORRECT. This is the '200 for business outcomes' pattern. The API worked correctly (HTTP 200) and returned a valid business decision (REJECTED due to inventory). The rejection is expected behavior, not a failure."
+      - text: "Technical failure — should return HTTP 422 Unprocessable Entity for rejected requests"
+        rationale: "HTTP 422 is for malformed requests (invalid payload). This request is well-formed; the rejection is a valid business decision. Use HTTP 200 + status field in body."
+      - text: "Business outcome — but should return HTTP 201 Created instead of 200 OK"
+        rationale: "HTTP 201 is for successful resource creation. This request didn't create anything (it was rejected). HTTP 200 is correct for successful execution that returns a decision."
+    correct_index: 1
+    tags: ["200-for-business-outcomes", "http-status", "business-vs-technical"]
+
+  - id: "arch-005"
+    domain_id: 1
+    objective_id: "1.2"
+    cc_level: 2
+    status: "active"
+    discrimination: 0.9
+    difficulty: -1.0
+    scenario: |
+      An architect must decide whether to use AI reasoning or deterministic logic for validating that a credit card number has correct Luhn checksum.
+    stem: "Should this validation use AI or deterministic logic?"
+    options:
+      - text: "AI — it can learn patterns in credit card numbers and validate faster"
+        rationale: "Luhn checksum is a mathematical algorithm (deterministic). Using AI adds unnecessary cost and probabilistic error. AI should not be used for validations that have deterministic answers."
+      - text: "Deterministic — Luhn checksum is a mathematical formula with one correct answer"
+        rationale: "CORRECT. Luhn checksum validation has a deterministic algorithm: multiply digits, sum, check modulo 10. There is no judgment involved — either the checksum is valid or it isn't. Use deterministic logic for all hard constraints."
+      - text: "AI — if confidence is above 0.95, accept; otherwise use deterministic fallback"
+        rationale: "This adds unnecessary complexity. Why use AI if you need deterministic fallback anyway? Just use the deterministic algorithm directly. AI should be for judgment calls, not mathematical validations."
+      - text: "Deterministic for US cards, AI for international cards (different rules)"
+        rationale: "All credit cards use the same Luhn algorithm regardless of country. This is a deterministic validation worldwide. No need for AI or regional variations."
+    correct_index: 1
+    tags: ["guided-determinism", "validation", "luhn-checksum"]
+
+  - id: "exp-004"
+    domain_id: 2
+    objective_id: "2.3"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.1
+    difficulty: -0.8
+    scenario: |
+      A Slack webhook receives an event with event_id: "Ev123". The Experience layer processes it successfully. Two seconds later, the same event_id arrives again.
+    stem: "What should the Experience layer do with the duplicate event?"
+    options:
+      - text: "Process it again — Slack sent it twice, so the user might expect two responses"
+        rationale: "Slack's at-least-once delivery guarantee means duplicates are expected (not user-initiated retries). Processing twice would cause duplicate downstream actions (e.g., two refunds for one request). Always deduplicate by event_id."
+      - text: "Return 200 OK immediately without processing — it's a duplicate based on event_id"
+        rationale: "CORRECT. Store event_id in Object Store before processing. On duplicate, return 200 OK (so Slack doesn't retry again) but skip processing. Idempotency prevents duplicate actions."
+      - text: "Return HTTP 409 Conflict to tell Slack this is a duplicate"
+        rationale: "Returning non-2xx (like 409) causes Slack to retry. Instead, return 200 OK (acknowledge receipt) but skip processing internally. The deduplication is the Experience layer's responsibility, not Slack's."
+      - text: "Process it only if the x-slack-retry-num header is missing"
+        rationale: "x-slack-retry-num only appears for timeout retries (Slack didn't get 200 OK in time). At-least-once duplicates arrive without this header. Use event_id for deduplication, not retry headers."
+    correct_index: 1
+    tags: ["deduplication", "at-least-once", "event-id"]
+
+  - id: "exp-005"
+    domain_id: 2
+    objective_id: "2.4"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.0
+    difficulty: -1.1
+    scenario: |
+      An Experience API receives a request with header x-request-id: "req-abc-123". It calls a Process API, which calls two System APIs.
+    stem: "Should the Experience API generate a new x-request-id for each downstream call?"
+    options:
+      - text: "Yes — each hop should have a unique request ID for isolation"
+        rationale: "Changing the request ID at each hop breaks end-to-end correlation. You wouldn't be able to trace the request across all services. The same x-request-id should propagate through the entire call chain."
+      - text: "No — propagate the same x-request-id through all downstream calls for tracing"
+        rationale: "CORRECT. x-request-id is for end-to-end correlation. The same ID should flow through Experience → Process → System APIs so you can trace the entire request in logs. Generate ONE request ID at ingress, propagate everywhere."
+      - text: "Yes — but store the original x-request-id in a separate x-parent-request-id header"
+        rationale: "This adds unnecessary complexity. Just propagate the same x-request-id everywhere. If you need parent-child relationships (e.g., fan-out), use a separate tracing system (like OpenTelemetry span IDs), not custom headers."
+      - text: "No — but only if the downstream services support the same x-request-id format"
+        rationale: "x-request-id format is typically a UUID or alphanumeric string — universally supported. There's no 'format compatibility' issue. Always propagate the same ID for correlation."
+    correct_index: 1
+    tags: ["correlation-id", "x-request-id", "tracing"]
+
+  - id: "proc-004"
+    domain_id: 3
+    objective_id: "3.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 0.8
+    difficulty: -1.3
+    scenario: |
+      An orchestrator calls an AI model. The model returns: {"decision": "APPROVE", "confidence": 0.65, "reasoning": "Customer is new"}.
+    stem: "Is confidence: 0.65 considered high or low for AI decision-making?"
+    options:
+      - text: "High — above 50% means more likely to be correct than incorrect"
+        rationale: "While 0.65 is above 50%, confidence thresholds for production AI are typically 0.80-0.90+. A confidence of 0.65 means 35% chance the decision is wrong — too risky for automated actions without human review."
+      - text: "Low — typical production threshold is 0.80-0.90 for automated actions"
+        rationale: "CORRECT. Confidence below 0.80 is generally considered low for automated decisions. At 0.65, you should route to human review or apply deterministic policy checks before proceeding. High confidence ≥ 0.90 allows full automation."
+      - text: "High — confidence above 0.60 is acceptable for non-financial decisions"
+        rationale: "Even for non-financial decisions, 0.65 confidence means 1 in 3 decisions could be wrong. This is too high an error rate for production. Use 0.80+ as a minimum threshold regardless of domain."
+      - text: "Low — confidence must be 1.0 (100%) for any automated action"
+        rationale: "Requiring 1.0 confidence is unrealistic — probabilistic AI models rarely return 100% confidence. Typical thresholds are 0.80-0.90 for automation, 0.60-0.80 for human-in-the-loop, below 0.60 for rejection."
+    correct_index: 1
+    tags: ["ai-confidence", "thresholds", "automation-threshold"]
+
+  - id: "proc-005"
+    domain_id: 3
+    objective_id: "3.2"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.2
+    difficulty: -0.9
+    scenario: |
+      A Process API orchestrates: (1) Call AI model for decision, (2) Call System API to execute mutation, (3) Call Slack API to notify user.
+    stem: "If step 2 (System API mutation) fails, should step 3 (Slack notification) still execute?"
+    options:
+      - text: "Yes — always notify the user even if the mutation failed"
+        rationale: "If you notify the user 'Refund approved!' but the mutation failed, the user expects a refund that never happened. Notification should only happen if the mutation succeeded. Use conditional logic or error handling."
+      - text: "No — notification should only happen if the mutation succeeds"
+        rationale: "CORRECT. Notification is confirmation of a successful action. If the mutation fails, don't send a success notification — either send a failure notification ('Something went wrong') or don't notify at all. Orchestration order matters."
+      - text: "Yes — but change the notification message to 'Processing failed, please try again'"
+        rationale: "This works (notify user of failure), but the question asks if step 3 should execute as-is (notify user of success). The answer is no — you'd need to change the orchestration flow to conditionally execute different notifications."
+      - text: "No — delete step 3 entirely and let the user poll for status"
+        rationale: "Removing user notification is poor UX. The correct pattern is: conditionally execute step 3 based on step 2 success/failure, and send appropriate messages ('Success!' vs 'Failed, retrying')."
+    correct_index: 1
+    tags: ["orchestration", "error-handling", "conditional-flow"]
+
+  - id: "sys-004"
+    domain_id: 4
+    objective_id: "4.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 0.9
+    difficulty: -1.0
+    scenario: |
+      A System API exposes GET /customers/{id}. An AI agent needs to retrieve customer data. The API currently requires an OAuth 2.0 Bearer token in the Authorization header.
+    stem: "To make this API callable by an AI agent, what must be added?"
+    options:
+      - text: "Change authentication from OAuth to API key (agents can't use OAuth)"
+        rationale: "AI agents can use OAuth (via client credentials flow). No need to change authentication. What's missing is the MCP tool contract (agent-network.yaml) that tells the agent how to call the API."
+      - text: "Add an agent-network.yaml entry defining the tool schema and authentication"
+        rationale: "CORRECT. To make an API callable by an AI agent, register it as an MCP tool with: (1) tool schema (name, description, parameters), (2) endpoint URL, (3) authentication method (OAuth, API key, etc). The agent reads agent-network.yaml to discover tools."
+      - text: "Remove authentication entirely (agents can't authenticate)"
+        rationale: "Agents can authenticate using API keys, OAuth, or other methods defined in the tool schema. Removing authentication creates a security hole. Keep authentication and document it in agent-network.yaml."
+      - text: "Add a prompt engineering guide telling the agent how to call the API"
+        rationale: "Prompt engineering can't tell an agent how to make HTTP calls. Agents need structured tool schemas (agent-network.yaml or MCP protocol) that define parameters, endpoints, and authentication. Prompts describe when/why to use tools, not how."
+    correct_index: 1
+    tags: ["mcp-tool", "agent-network-yaml", "tool-registration"]
+
+  - id: "sys-005"
+    domain_id: 4
+    objective_id: "4.2"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.1
+    difficulty: -0.8
+    scenario: |
+      A System API successfully creates a Salesforce Case (HTTP 201 from Salesforce). It returns HTTP 201 to the caller with body: {"caseId": "500xxx"}.
+    stem: "Should the System API return HTTP 201 or HTTP 200?"
+    options:
+      - text: "HTTP 201 — a resource (Case) was created"
+        rationale: "CORRECT. HTTP 201 Created is the correct status when a new resource is created. Return 201 with the resource ID (caseId) in the response body. This is standard REST semantics."
+      - text: "HTTP 200 — the API executed successfully"
+        rationale: "HTTP 200 OK is for successful requests that don't create resources (e.g., GET, updates that don't create new records). For resource creation, HTTP 201 Created is more precise and follows REST conventions."
+      - text: "HTTP 200 — always use 200 for business outcomes per the '200 for business outcomes' pattern"
+        rationale: "'200 for business outcomes' applies to business rejections (REJECTED, DENIED) that are successful executions, not failures. For successful creations, use HTTP 201. Use 200 only for non-creation successes."
+      - text: "HTTP 201 — but only if the caller explicitly requested 201 via Accept header"
+        rationale: "HTTP status codes are determined by the operation (GET, POST, DELETE) and outcome (success, failure, creation), not by client preferences. Always return 201 for successful resource creation regardless of headers."
+    correct_index: 0
+    tags: ["http-status-codes", "rest-semantics", "resource-creation"]
+
+  - id: "ai-004"
+    domain_id: 5
+    objective_id: "5.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.0
+    difficulty: -1.1
+    scenario: |
+      A Bedrock Agent has an Action Group that invokes a Lambda function. The Lambda function must return structured data to the agent.
+    stem: "What format must the Lambda return for the agent to parse the response?"
+    options:
+      - text: "Plain JSON: {\"refundId\": \"R123\", \"status\": \"approved\"}"
+        rationale: "Bedrock Action Groups require a specific response contract with messageVersion, actionGroup, and functionResponse fields. Plain JSON doesn't conform to this contract and causes the agent to fail."
+      - text: "Bedrock Action Group contract: {messageVersion: '1.0', response: {actionGroup: '...', functionResponse: {responseBody: {TEXT: {body: '...'}}}}}"
+        rationale: "CORRECT. Bedrock Action Group Lambda functions must return this exact structure. The TEXT.body field contains the actual data (as a JSON string). Missing messageVersion or incorrect structure causes silent failures."
+      - text: "Plain text string: 'Refund R123 approved'"
+        rationale: "While the functionResponse.responseBody.TEXT.body is a string, the Lambda can't return JUST a string — it must return the full contract with messageVersion, actionGroup, and functionResponse wrapper."
+      - text: "XML format: <response><refundId>R123</refundId><status>approved</status></response>"
+        rationale: "Bedrock Action Groups expect JSON, not XML. The response must use the JSON contract with messageVersion and functionResponse fields."
+    correct_index: 1
+    tags: ["bedrock-agent", "lambda-contract", "action-group"]
+
+  - id: "sf-004"
+    domain_id: 6
+    objective_id: "6.1"
+    cc_level: 2
+    status: "active"
+    discrimination: 0.9
+    difficulty: -1.2
+    scenario: |
+      A Salesforce Connected App is created for a MuleSoft application. The app needs to query Data Cloud and create Cases.
+    stem: "Which OAuth flow should the Connected App use?"
+    options:
+      - text: "Authorization Code flow — user must log in via browser"
+        rationale: "Authorization Code flow requires a human user to log in. This works for user-facing web apps but not for server-to-server integration (MuleSoft app running on CloudHub). Use Client Credentials for service accounts."
+      - text: "Client Credentials flow — service account with no user interaction"
+        rationale: "CORRECT. Client Credentials (OAuth 2.0) is for server-to-server authentication. The MuleSoft app authenticates using client_id + client_secret, gets an access token, and calls Salesforce APIs. No human user login required."
+      - text: "Username-Password flow — MuleSoft app stores user credentials"
+        rationale: "Username-Password flow is deprecated and less secure than Client Credentials. It requires storing a user's username + password (security risk). Use Client Credentials for service accounts."
+      - text: "JWT Bearer flow — MuleSoft app has a pre-signed JWT"
+        rationale: "JWT Bearer flow works for service accounts but requires certificate management (more complex). Client Credentials is simpler and equally secure for this use case."
+    correct_index: 1
+    tags: ["oauth", "client-credentials", "connected-app"]
+
+  - id: "gov-004"
+    domain_id: 7
+    objective_id: "7.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.0
+    difficulty: -0.9
+    scenario: |
+      An enterprise has 10 AI agents calling different LLM providers (Bedrock, OpenAI, Azure). A new requirement mandates: "Log all prompts and responses for audit."
+    stem: "Where should prompt/response logging be implemented?"
+    options:
+      - text: "In each agent's application code — add logging after every LLM call"
+        rationale: "This requires modifying 10 agents. If you add an 11th agent later, you must remember to add logging. Platform-level enforcement (at the gateway) is more scalable and ensures no agent bypasses logging."
+      - text: "At the AI Gateway (Omni Gateway) — apply a logging policy to all Agent Instances"
+        rationale: "CORRECT. Cross-cutting concerns like audit logging should be enforced at the platform level (gateway policies). This ensures all agents are logged automatically, new agents inherit the policy, and no agent can bypass it."
+      - text: "At the LLM provider level — configure Bedrock/OpenAI to log all requests"
+        rationale: "LLM providers offer logging (CloudWatch, Azure Monitor), but you control different providers differently. Centralized logging at the gateway is simpler (one policy, all providers) and keeps logs in your infrastructure."
+      - text: "In a separate audit service — each agent sends logs to the audit service after LLM calls"
+        rationale: "This requires every agent to call the audit service (opt-in, error-prone). If an agent forgets to log, you miss audits. Platform-level enforcement at the gateway is automatic and mandatory."
+    correct_index: 1
+    tags: ["audit-logging", "platform-policy", "cross-cutting-concerns"]
+
+  - id: "ops-004"
+    domain_id: 8
+    objective_id: "8.3"
+    cc_level: 2
+    status: "active"
+    discrimination: 0.8
+    difficulty: -1.0
+    scenario: |
+      A Mule application is deployed to CloudHub 2.0. After deployment, the health check fails with "Connection refused" when trying to reach the app.
+    stem: "What is the most likely cause?"
+    options:
+      - text: "The app is still starting up — wait 30-60 seconds and retry"
+        rationale: "CORRECT. CloudHub 2.0 apps take 30-60 seconds to start (load runtime, initialize connectors, open HTTP listener). 'Connection refused' means the app hasn't opened the port yet. Wait for the app to be in 'Running' state."
+      - text: "The health check URL is wrong — should be /api/health not /health"
+        rationale: "If the URL is wrong, you'd get HTTP 404 (not found), not 'connection refused'. 'Connection refused' means the TCP connection failed — the app isn't listening yet (not started)."
+      - text: "The app crashed on startup — check CloudHub logs for errors"
+        rationale: "Possible, but the most common cause of 'connection refused' immediately after deployment is that the app is still starting. Check logs only if the error persists after 60 seconds."
+      - text: "The firewall is blocking the health check — whitelist the health check IP"
+        rationale: "CloudHub health checks come from internal IPs (automatically whitelisted). If firewall were the issue, you'd see timeout (not 'connection refused'). 'Connection refused' is a TCP-level rejection (app not listening)."
+    correct_index: 0
+    tags: ["health-check", "connection-refused", "startup-time"]

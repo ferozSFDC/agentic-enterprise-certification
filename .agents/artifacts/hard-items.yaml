@@ -1,0 +1,146 @@
+# 6 Hard Items (b ≥ 1.0)
+# 4-5 sentence scenarios, high cognitive load, multi-domain integration
+
+  - id: "arch-008"
+    domain_id: 1
+    objective_id: "1.7"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.8
+    difficulty: 1.2
+    scenario: |
+      An agentic returns processing pipeline has four services: (1) slack-agent-router (Experience layer) receives Slack events, (2) ai-orchestrator (Process layer) calls AI Gateway for refund decisions, (3) data-cloud-sapi (System API) queries customer profiles, (4) service-cloud-sapi (System API) creates Cases. The architect implements circuit breakers: CB-A in slack-agent-router around ai-orchestrator, CB-B in ai-orchestrator around AI Gateway, CB-C in ai-orchestrator around data-cloud-sapi. The AI Gateway starts failing (HTTP 503, 100% failure rate for 2 minutes).
+
+      Given circuit breaker thresholds of 3 consecutive failures with 60-second cooldown, which circuit breakers will open, and in what order?
+    stem: "Which circuit breakers open and in what order?"
+    options:
+      - text: "CB-B opens first (wraps AI Gateway), then CB-A opens (wraps ai-orchestrator which is now failing)"
+        rationale: "CORRECT. CB-B detects AI Gateway failures (3 consecutive 503s) and opens (stops calling AI Gateway). Now ai-orchestrator returns errors to slack-agent-router (because AI Gateway is unavailable). After 3 consecutive errors from ai-orchestrator, CB-A opens. Cascade: downstream failure → upstream circuit opens."
+      - text: "Only CB-B opens (wraps AI Gateway) — CB-A doesn't open because ai-orchestrator itself is healthy"
+        rationale: "CB-A tracks failures from ai-orchestrator's perspective. If ai-orchestrator returns errors (because its AI Gateway call failed), those count as failures for CB-A. CB-A opens when ai-orchestrator fails 3 times, regardless of why it failed."
+      - text: "All three circuit breakers open — CB-B, CB-A, CB-C (AI Gateway failure cascades to all services)"
+        rationale: "CB-C wraps data-cloud-sapi (unrelated to AI Gateway). data-cloud-sapi is healthy, so CB-C stays closed. Only CB-B (AI Gateway) and CB-A (ai-orchestrator, which depends on AI Gateway) open. Failures don't cascade to unrelated dependencies."
+      - text: "CB-A opens first (wraps ai-orchestrator), then CB-B opens (wraps AI Gateway)"
+        rationale: "CB-B detects failures first (it's closest to the AI Gateway). CB-B opens after 3 consecutive 503s from AI Gateway. Then CB-A opens after ai-orchestrator fails 3 times (because AI Gateway is unavailable). Order: downstream circuit first, then upstream."
+    correct_index: 0
+    tags: ["circuit-breaker-cascade", "multi-layer-failure", "dependency-chain"]
+
+  - id: "proc-009"
+    domain_id: 3
+    objective_id: "3.9"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.9
+    difficulty: 1.4
+    scenario: |
+      An ai-orchestrator pipeline processes a $600 refund request. Stage 1: Query Data Cloud for customer profile → LoyaltyTier="Gold", ChurnRisk=85 (high). Stage 2: Call AI model → decision="DENY", confidence=0.88, reasoning="High churn risk, customer might exploit refunds". Stage 3: Evaluate deterministic policy → refund amount $600 is above $500 limit (POLICY_FAIL). Stage 4 (mutation gate): Check identityResolved=true, payloadValid=true, aiDecision="DENY", policyPassed=false.
+
+      The business rule states: "If AI says DENY and policy also fails, always DENY. If AI says APPROVE but policy fails, override to DENY. If AI says DENY but policy passes, route to human review (AI might be too conservative)."
+    stem: "Given this request, what should the orchestrator do?"
+    options:
+      - text: "DENY immediately — both AI (DENY) and policy (FAIL) agree on rejection"
+        rationale: "CORRECT. AI decision: DENY (confidence 0.88). Policy decision: FAIL (amount > limit). Both gates say DENY → final decision is DENY. No need for human review when both deterministic policy and AI agree. Mutation gate blocks execution."
+      - text: "Route to human review — AI confidence 0.88 is below 0.90 threshold, needs review"
+        rationale: "Human review is for borderline cases (AI says DENY but policy passes). Here, policy also fails (amount > $500 limit). When both AI and policy agree on DENY, no human review needed — it's a clear rejection."
+      - text: "DENY immediately — policy failure alone is sufficient, ignore AI decision"
+        rationale: "While policy failure is sufficient to DENY (policy overrides AI), the question asks what the orchestrator should do given the business rule. The rule says 'AI DENY + policy FAIL = DENY immediately' (which is true here). Answer is correct but reasoning should reference both factors."
+      - text: "Route to human review — customer is Gold tier with high churn risk (special case)"
+        rationale: "Gold tier + high churn risk is contextual information for the AI decision. It doesn't override deterministic policy (amount > $500 limit). Human review is for 'AI DENY + policy PASS' (not this case). Here: both DENY → reject immediately."
+    correct_index: 0
+    tags: ["guided-determinism", "multi-factor-decision", "policy-ai-alignment"]
+
+  - id: "proc-010"
+    domain_id: 3
+    objective_id: "3.10"
+    cc_level: 3
+    status: "active"
+    discrimination: 2.0
+    difficulty: 1.6
+    scenario: |
+      An ai-orchestrator has a circuit breaker (CB-AI) around the AI Gateway with threshold=3, cooldown=60s. At time T=0, the orchestrator processes 10 requests sequentially. Requests 1-5 succeed (AI Gateway responds in <2s). Request 6 times out after 5s (timeout configured). Request 7 times out after 5s. Request 8 times out after 5s. CB-AI opens. Request 9 arrives at T=16s and sees CB-AI open (fails immediately). Request 10 arrives at T=65s (after cooldown).
+
+      What happens to request 10?
+    stem: "What happens to request 10 at T=65s?"
+    options:
+      - text: "Request 10 fails immediately — circuit is still open (cooldown starts from when circuit opened, not from last request)"
+        rationale: "Cooldown starts when the circuit opens (after request 8, at T~15s). After 60 seconds (T=75s), the circuit enters HALF_OPEN. Request 10 at T=65s arrives during the cooldown period (before T=75s), so it fails immediately."
+      - text: "Request 10 is attempted (probe request) — circuit enters HALF_OPEN state after cooldown"
+        rationale: "Circuit enters HALF_OPEN after cooldown (60s from when it opened). Circuit opened at T~15s (after request 8). Cooldown ends at T=75s. Request 10 at T=65s is 10 seconds BEFORE cooldown ends, so circuit is still OPEN. Request 10 fails immediately."
+      - text: "Request 10 succeeds — cooldown elapsed (65s > 60s cooldown period)"
+        rationale: "Cooldown is measured from when the circuit opened (T~15s after request 8), not from T=0. Circuit opened at T=15s. Cooldown ends at T=75s (15+60). Request 10 at T=65s is 10 seconds before cooldown ends. Circuit is still OPEN → request 10 fails."
+      - text: "Request 10 is attempted (probe) — enough time has passed since the last failed request (request 9 at T=16s)"
+        rationale: "HALF_OPEN state is triggered by cooldown period (60s from circuit opening), not by time since last request. Circuit opened at T~15s. Cooldown ends at T=75s. Request 10 at T=65s arrives before cooldown ends → circuit is OPEN, request fails immediately."
+    correct_index: 0
+    tags: ["circuit-breaker-timing", "cooldown-calculation", "state-transitions"]
+
+  - id: "sys-008"
+    domain_id: 4
+    objective_id: "4.7"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.7
+    difficulty: 1.3
+    scenario: |
+      A System API receives POST /refunds with idempotency key derived from hash(customerId + orderNumber). Request A arrives at T=0 with key="abc123", starts processing (queries Data Cloud, calls Bedrock for AI decision, evaluates policy — takes 8 seconds total). At T=2 (while Request A is still processing), Request B arrives with the same key="abc123" (duplicate/retry). The System API stores the idempotency key in Object Store with TTL=3600s BEFORE starting processing (at T=0 for Request A).
+
+      What should happen to Request B at T=2?
+    stem: "What happens to Request B at T=2?"
+    options:
+      - text: "Request B returns 200 OK immediately with the result from Request A (even though Request A hasn't finished yet)"
+        rationale: "Request A hasn't finished yet (finishes at T=8s). The idempotency key exists in Object Store but no result is available yet. Request B should wait or poll for Request A's result, or return HTTP 202 Accepted (processing)."
+      - text: "Request B waits until Request A finishes (at T=8s), then returns the same result as Request A"
+        rationale: "CORRECT. Idempotency for in-flight requests: Request B sees key exists (Request A is processing), waits for Request A to complete (T=8s), then returns the same result. This prevents duplicate processing and ensures both requests get consistent results."
+      - text: "Request B returns HTTP 409 Conflict — duplicate request is already being processed"
+        rationale: "HTTP 409 is for conflicts (e.g., trying to create a resource that already exists). For idempotency, don't return an error — return the same result as the original request. Request B should wait for Request A and return its result."
+      - text: "Request B processes independently (queries Data Cloud again, calls Bedrock again) because Request A hasn't stored a result yet"
+        rationale: "This violates idempotency — both requests would call Bedrock, create duplicate refunds, waste resources. The idempotency key was stored at T=0 (before processing). Request B should detect the key exists and wait for Request A's result."
+    correct_index: 1
+    tags: ["idempotency", "in-flight-requests", "concurrency"]
+
+  - id: "sf-007"
+    domain_id: 6
+    objective_id: "6.7"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.8
+    difficulty: 1.5
+    scenario: |
+      A Data Cloud administrator configures Identity Resolution with three data sources: Salesforce CRM (Contacts with Email field), Marketing Cloud (Subscribers with EmailAddress field), and Service Cloud (Cases with CustomerEmail__c field). The mapping is: Contact.Email → ContactPointEmail.EmailAddress, Contact.Id → ContactPointEmail.PartyId. After ingestion, the dashboard shows 5,000 CRM Contacts, 3,000 Marketing Cloud Subscribers, 2,000 Service Cloud Cases. Identity Resolution produces 5,000 Unified Individuals. The administrator expected 8,000 Individuals (all unique customers from all three sources).
+
+      What is the problem with the mapping configuration?
+    stem: "Why did Identity Resolution produce 5,000 Individuals instead of 8,000?"
+    options:
+      - text: "Only CRM Contacts are mapped to ContactPointEmail — Marketing Cloud and Service Cloud data sources are not mapped"
+        rationale: "CORRECT. The mapping only includes Contact.Email → ContactPointEmail.EmailAddress. Marketing Cloud Subscribers and Service Cloud Cases are not mapped to ContactPointEmail or Individual DMOs. Identity Resolution only processes mapped sources. Without mapping, those 3,000 + 2,000 records are ignored."
+      - text: "The match rule requires exact email match — Marketing Cloud and Service Cloud emails don't match CRM emails"
+        rationale: "If all three sources were mapped and match rules found no matches, you'd get 8,000 Individuals (no overlap). But you got 5,000 (exactly the CRM count), which means only CRM is mapped. Marketing Cloud and Service Cloud aren't participating in Identity Resolution."
+      - text: "The reconciliation rule 'CRM source priority' causes Marketing Cloud and Service Cloud records to be merged into CRM Individuals"
+        rationale: "Reconciliation rules determine which field VALUE to use (e.g., which email if CRM and Marketing Cloud both provide one). They don't merge records into fewer Individuals — that's match rules. 5,000 Individuals = only CRM is mapped."
+      - text: "Identity Resolution has a 5,000-record limit — Marketing Cloud and Service Cloud records are queued for the next batch"
+        rationale: "Identity Resolution processes all ingested records (no hard limit at 5,000). Getting exactly 5,000 Individuals (the CRM count) indicates only CRM is mapped. Marketing Cloud and Service Cloud need explicit field mappings to participate in Identity Resolution."
+    correct_index: 0
+    tags: ["data-cloud", "multi-source-mapping", "identity-resolution-scope"]
+
+  - id: "gov-007"
+    domain_id: 7
+    objective_id: "7.7"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.9
+    difficulty: 1.4
+    scenario: |
+      An enterprise has 15 AI agents across three teams: Team A (5 agents, development stage, should use Claude 3 Haiku for cost), Team B (7 agents, production, must use Claude 3 Opus for quality), Team C (3 agents, internal tools, can use any model). All agents route through the same Omni Gateway instance. The architect wants to enforce model restrictions at the gateway level based on team membership.
+
+      Each agent's requests include a custom header: x-team-id (values: "team-a", "team-b", "team-c"). How should the gateway policy enforce model restrictions?
+    stem: "How should the gateway enforce model restrictions per team?"
+    options:
+      - text: "Create three separate Omni Gateway instances (one per team) with different model allowlists, route agents to their team's gateway"
+        rationale: "This works but requires managing three gateway instances (more operational overhead, more cost). A single gateway with conditional policy based on x-team-id is simpler (one gateway, one policy with team-based rules)."
+      - text: "Create one gateway policy with conditional logic: if x-team-id='team-a' require Haiku, if 'team-b' require Opus, if 'team-c' allow any"
+        rationale: "CORRECT. Custom gateway policy inspects x-team-id header, validates 'model' parameter based on team rules. Team A requests with model != Haiku → HTTP 403. Team B requests with model != Opus → HTTP 403. Team C requests → allow any model. Centralized, scalable, single gateway."
+      - text: "Store team-model mappings in a Salesforce custom object, have each agent query it before calling the gateway"
+        rationale: "This requires every agent to query Salesforce before each LLM call (adds latency, requires database access). Platform-level enforcement (gateway policy) is automatic, faster, and doesn't require agents to 'opt in'."
+      - text: "Configure Agent Fabric role-based access control (RBAC): Team A role → Haiku only, Team B role → Opus only, Team C role → all models"
+        rationale: "Agent Fabric (as of 2024) doesn't have built-in RBAC for model restrictions. Custom gateway policies (option B) are the standard way to enforce conditional logic based on headers/metadata. This would be a nice feature but doesn't exist yet."
+    correct_index: 1
+    tags: ["conditional-policy", "multi-team-governance", "header-based-routing"]

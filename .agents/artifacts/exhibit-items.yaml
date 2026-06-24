@@ -1,0 +1,243 @@
+# 6 Exhibit Items (mixed difficulty)
+# "Refer to the exhibit..." pattern with code/config/diagrams
+
+  - id: "sys-009"
+    domain_id: 4
+    objective_id: "4.8"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.3
+    difficulty: 0.2
+    scenario: |
+      Refer to the exhibit. This RAML specification defines a refunds API.
+
+      ```yaml
+      /refunds:
+        /{orderId}:
+          post:
+            body:
+              application/json:
+                properties:
+                  amount:
+                    type: number
+                    required: true
+                  reason:
+                    type: string
+                    required: true
+            responses:
+              201:
+                body:
+                  application/json:
+                    properties:
+                      refundId: string
+                      status: string
+      ```
+
+      According to this specification, what is the correct URI to create a refund for order ID "ORD-5001"?
+    stem: "What is the correct URI for order 'ORD-5001'?"
+    options:
+      - text: "POST /refunds/ORD-5001"
+        rationale: "CORRECT. The RAML spec defines /refunds/{orderId} → POST /refunds/ORD-5001. The orderId is a URI parameter (path variable), not a query parameter or body field."
+      - text: "POST /refunds?orderId=ORD-5001"
+        rationale: "The spec defines {orderId} as a path parameter (/refunds/{orderId}), not a query parameter. Query parameters use ? syntax. This URI doesn't match the RAML spec."
+      - text: "POST /refunds with body: {\"orderId\": \"ORD-5001\", \"amount\": 450, \"reason\": \"...\"}"
+        rationale: "The orderId is in the URI path (/refunds/{orderId}), not the request body. The body contains amount and reason (per RAML spec), but orderId goes in the path."
+      - text: "POST /refunds/{orderId} (literal, with curly braces)"
+        rationale: "{orderId} is a placeholder in the RAML spec. In the actual HTTP request, substitute the placeholder with the value: /refunds/ORD-5001 (no curly braces)."
+    correct_index: 0
+    tags: ["raml", "uri-construction", "path-parameters"]
+
+  - id: "exp-009"
+    domain_id: 2
+    objective_id: "2.8"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.4
+    difficulty: 0.5
+    scenario: |
+      Refer to the exhibit. This Mule XML flow processes Slack events.
+
+      ```xml
+      <flow name="slack-webhook">
+        <http:listener path="/slack/events" config-ref="HTTP_Listener_config"/>
+        <logger message="Event received: #[payload.event.type]"/>
+        <choice>
+          <when expression="#[payload.type == 'url_verification']">
+            <set-payload value="#[payload.challenge]"/>
+          </when>
+          <when expression="#[payload.event.type == 'app_mention']">
+            <flow-ref name="process-app-mention"/>
+          </when>
+          <otherwise>
+            <set-payload value='{"ok": true}'/>
+          </otherwise>
+        </choice>
+      </flow>
+      ```
+
+      According to this flow, what happens when payload.type == "event_callback" and payload.event.type == "app_mention"?
+    stem: "What happens for event_callback with app_mention?"
+    options:
+      - text: "The flow calls process-app-mention (matches second when condition)"
+        rationale: "CORRECT. First when checks payload.type == 'url_verification' (false). Second when checks payload.event.type == 'app_mention' (true) → calls process-app-mention. Choice evaluates conditions sequentially until one matches."
+      - text: "The flow returns {\"ok\": true} (falls through to otherwise)"
+        rationale: "The second when condition checks payload.event.type == 'app_mention' (true), so it matches before reaching otherwise. otherwise only executes if no when conditions match."
+      - text: "The flow returns the challenge string (matches first when condition)"
+        rationale: "First when checks payload.type == 'url_verification'. For event_callback events, payload.type is 'event_callback' (not 'url_verification'), so this condition is false."
+      - text: "The flow logs the event but doesn't process it (no matching condition)"
+        rationale: "The second when condition matches (payload.event.type == 'app_mention'). The flow calls process-app-mention. The otherwise block is NOT executed when a when condition matches."
+    correct_index: 0
+    tags: ["mule-xml", "choice-router", "conditional-flow"]
+
+  - id: "proc-011"
+    domain_id: 3
+    objective_id: "3.11"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.2
+    difficulty: 0.4
+    scenario: |
+      Refer to the exhibit. This JSON payload is the response from an AI Gateway call.
+
+      ```json
+      {
+        "decision": "APPROVE",
+        "confidence": 0.87,
+        "reasoning": "Customer is Gold tier with good payment history",
+        "metadata": {
+          "model": "claude-3-opus-20240229",
+          "tokens_used": 450
+        }
+      }
+      ```
+
+      A DataWeave transformation must extract the decision and confidence. According to this payload structure, what is the correct DataWeave expression?
+    stem: "What DataWeave expression extracts decision and confidence?"
+    options:
+      - text: "{decision: payload.decision, confidence: payload.confidence}"
+        rationale: "CORRECT. The payload has decision and confidence at the root level. DataWeave syntax: payload.fieldName accesses root-level fields. Result: {decision: 'APPROVE', confidence: 0.87}."
+      - text: "{decision: payload.metadata.decision, confidence: payload.metadata.confidence}"
+        rationale: "decision and confidence are at the root level (not inside metadata). metadata contains model and tokens_used. Accessing payload.metadata.decision returns null."
+      - text: "{decision: payload.'decision', confidence: payload.'confidence'}"
+        rationale: "Single quotes are for field names with special characters (e.g., 'field-name', 'field.with.dot'). For simple field names (decision, confidence), quotes are optional. payload.decision works (no quotes needed)."
+      - text: "{decision: payload[0].decision, confidence: payload[0].confidence}"
+        rationale: "payload[0] is array access syntax. The payload is an object (not an array). Use payload.decision (dot notation for objects), not payload[0] (index notation for arrays)."
+    correct_index: 0
+    tags: ["dataweave", "json-extraction", "payload-access"]
+
+  - id: "gov-008"
+    domain_id: 7
+    objective_id: "7.8"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.5
+    difficulty: 0.6
+    scenario: |
+      Refer to the exhibit. This agent-network.yaml entry defines an MCP tool for creating Salesforce Cases.
+
+      ```yaml
+      tools:
+        - name: create_case
+          description: Create a new Salesforce Service Cloud Case
+          protocol: mcp
+          endpoint: https://mcp-server.example.com/tools/create-case
+          authentication:
+            type: oauth2
+            tokenUrl: https://login.salesforce.com/services/oauth2/token
+            clientId: ${CLIENT_ID}
+            clientSecret: ${CLIENT_SECRET}
+          parameters:
+            subject:
+              type: string
+              required: true
+            description:
+              type: string
+              required: true
+            priority:
+              type: string
+              enum: [Low, Medium, High]
+              default: Medium
+      ```
+
+      According to this schema, which of the following tool invocations is valid?
+    stem: "Which tool invocation is valid per the schema?"
+    options:
+      - text: "{\"subject\": \"Refund request\", \"description\": \"Customer wants refund for order 5001\", \"priority\": \"High\"}"
+        rationale: "CORRECT. All required fields present (subject, description). priority is optional (has default) but provided value 'High' is in the enum [Low, Medium, High]. This matches the schema."
+      - text: "{\"subject\": \"Refund request\", \"priority\": \"High\"}"
+        rationale: "Missing required field 'description'. The schema specifies description as required: true. This invocation is invalid (would be rejected by the MCP server)."
+      - text: "{\"subject\": \"Refund request\", \"description\": \"Customer wants refund\", \"priority\": \"Urgent\"}"
+        rationale: "priority value 'Urgent' is not in the enum [Low, Medium, High]. The schema restricts priority to these three values. 'Urgent' would be rejected (invalid enum value)."
+      - text: "{\"description\": \"Customer wants refund for order 5001\", \"priority\": \"Medium\"}"
+        rationale: "Missing required field 'subject'. The schema specifies subject as required: true. This invocation is invalid even though description and priority are present."
+    correct_index: 0
+    tags: ["agent-network-yaml", "mcp-tool-schema", "parameter-validation"]
+
+  - id: "sf-008"
+    domain_id: 6
+    objective_id: "6.8"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.3
+    difficulty: 0.3
+    scenario: |
+      Refer to the exhibit. This is the Data Cloud DMO schema for ssot__Individual__dlm.
+
+      ```
+      DMO: ssot__Individual__dlm
+      Fields:
+        - PartyId (Text, Primary Key)
+        - FirstName (Text)
+        - LastName (Text)
+        - Loyalty_Tier (Text, Custom Field)
+        - Churn_Risk_Score (Number, Custom Field)
+      ```
+
+      A System API needs to query this DMO to retrieve FirstName, LastName, and the loyalty tier for a customer with PartyId = "P123". According to this schema, what is the correct SOQL query?
+    stem: "What is the correct SOQL query?"
+    options:
+      - text: "SELECT FirstName, LastName, Loyalty_Tier FROM ssot__Individual__dlm WHERE PartyId = 'P123'"
+        rationale: "CORRECT. The custom field API name is 'Loyalty_Tier' (underscore, no __c suffix). SOQL is case-sensitive for field names. Match the exact field name from the DMO schema."
+      - text: "SELECT FirstName, LastName, LoyaltyTier__c FROM ssot__Individual__dlm WHERE PartyId = 'P123'"
+        rationale: "The schema shows the field name as 'Loyalty_Tier' (not 'LoyaltyTier__c'). Data Cloud custom fields don't always use __c suffix. Using the wrong field name returns zero rows (silent failure). Check DMO schema for exact names."
+      - text: "SELECT FirstName, LastName, Loyalty_Tier FROM ssot__Individual__dlm WHERE PartyId == 'P123'"
+        rationale: "SOQL uses single = for equality (not ==). Double equals (==) is programming language syntax (JavaScript, Java). This query has a syntax error."
+      - text: "SELECT FirstName, LastName, LoyaltyTier FROM ssot__Individual__dlm WHERE PartyId = 'P123'"
+        rationale: "The field name is 'Loyalty_Tier' (with underscore), not 'LoyaltyTier' (no underscore). Field names are case- and punctuation-sensitive in Data Cloud. This query returns zero rows (field name mismatch)."
+    correct_index: 0
+    tags: ["data-cloud-soql", "dmo-schema", "field-name-precision"]
+
+  - id: "exp-010"
+    domain_id: 2
+    objective_id: "2.9"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.6
+    difficulty: 0.9
+    scenario: |
+      Refer to the exhibit. This is a circuit breaker state diagram with three states: CLOSED, OPEN, HALF_OPEN.
+
+      ```
+      [CLOSED] --threshold failures--> [OPEN] --cooldown elapsed--> [HALF_OPEN]
+         ^                                                                |
+         |                                                                |
+         +---------------probe success---------------------------------+
+                                                                          |
+      [OPEN] <-----------------------probe failure---------------------+
+      ```
+
+      A circuit breaker is configured with threshold=3, cooldown=60s. At T=0, the circuit is CLOSED. Requests 1-5 succeed. Requests 6-8 fail (3 consecutive failures → circuit opens at T=15s). At T=75s (60s cooldown elapsed), request 9 is sent as a probe. The probe succeeds.
+
+      According to the state diagram, what is the circuit's state after request 9 succeeds?
+    stem: "What is the circuit state after the successful probe?"
+    options:
+      - text: "CLOSED — probe success transitions from HALF_OPEN to CLOSED"
+        rationale: "CORRECT. After cooldown (T=75s), circuit enters HALF_OPEN. Request 9 (probe) succeeds → circuit transitions to CLOSED (diagram shows 'probe success' arrow from HALF_OPEN to CLOSED). Subsequent requests proceed normally."
+      - text: "HALF_OPEN — probe success keeps the circuit in HALF_OPEN (testing mode)"
+        rationale: "HALF_OPEN is a temporary state (one probe request). If probe succeeds, circuit closes (returns to normal). If probe fails, circuit reopens. HALF_OPEN doesn't persist after probe completes."
+      - text: "OPEN — probe success doesn't change state, circuit stays OPEN until manual reset"
+        rationale: "The diagram shows 'probe success' arrow from HALF_OPEN to CLOSED. Probe success closes the circuit (assumes downstream is healthy). No manual reset needed. Circuit automatically recovers."
+      - text: "CLOSED — but requires 3 consecutive successful requests before fully closing (not just one probe)"
+        rationale: "Standard circuit breaker pattern: one successful probe in HALF_OPEN → transition to CLOSED. Some implementations require N successful probes, but the standard pattern (shown in diagram) uses one probe. Diagram shows direct transition on 'probe success'."
+    correct_index: 0
+    tags: ["circuit-breaker-diagram", "state-transitions", "half-open-probe"]

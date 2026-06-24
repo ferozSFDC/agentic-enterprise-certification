@@ -102,7 +102,7 @@ items:
       What pattern should the Experience layer use to meet Slack's constraint while processing the request?
     stem: "What pattern meets Slack's 3-second requirement?"
     options:
-      - text: "Immediately return 200 OK with an empty body, then process the event in a background flow and post the result to Slack using the response_url or chat.postMessage API"
+      - text: "Return 200 OK immediately, process in background, post result via Slack API (response_url or chat.postMessage)"
         rationale: "CORRECT. Async processing pattern: acknowledge immediately (under 3 seconds), process in background, reply when done. This prevents Slack retries and allows long-running AI operations."
       - text: "Set a 2-second timeout on the AI Gateway call; if it times out, return 200 OK with a 'please try again' message"
         rationale: "A 2-second timeout is too aggressive for AI reasoning (which may take 5-10 seconds for complex prompts). The user would have to manually retry, which is poor UX. The async pattern handles this automatically."
@@ -150,7 +150,7 @@ items:
       A circuit breaker is configured with threshold=3, cooldown=60000ms. After 3 consecutive failures, what should happen?
     stem: "After 3 consecutive failures, what should the circuit breaker do?"
     options:
-      - text: "Open the circuit (stop calling the Process API for 60 seconds), return a degraded response to the user (e.g., 'Service temporarily unavailable'), then attempt one probe request after 60 seconds"
+      - text: "Open circuit, return degraded response ('Service unavailable'), probe after 60-second cooldown"
         rationale: "CORRECT. Circuit breaker state machine: CLOSED → OPEN (on threshold) → HALF_OPEN (after cooldown) → back to CLOSED (on success) or OPEN (on failure). Opening the circuit protects the downstream service from additional load while it recovers."
       - text: "Continue retrying but add exponential backoff (wait 1s, then 2s, then 4s) to reduce load on the Process API"
         rationale: "Exponential backoff is a retry strategy, not a circuit breaker. A circuit breaker *stops* calling the downstream service entirely after the threshold is reached. Backoff still sends requests (just slower), which doesn't protect the downstream service."
@@ -256,7 +256,7 @@ items:
     options:
       - text: "The orchestrator cannot read the response body to understand WHY the refund was denied, so it cannot provide a meaningful message to the user"
         rationale: "This is a problem, but not the MAIN problem related to the circuit breaker. The bigger issue is that 403 is counted as a failure by the circuit breaker."
-      - text: "The circuit breaker treats HTTP 403 as a failure; after 3 policy-denied requests (legitimate business rejections), the circuit opens and ALL subsequent requests fail — even legitimate ones"
+      - text: "Circuit breaker treats 403 as failure; after 3 policy rejections, circuit opens and blocks all requests"
         rationale: "CORRECT. This is the '200 for business outcomes' pattern. Policy denial is a BUSINESS outcome (not a technical failure). It should return HTTP 200 with status: REJECTED in the body. Using 403/400/422 for business rejections causes false circuit breaker trips."
       - text: "HTTP 403 means 'authentication failed' (wrong credentials), but the request is authenticated correctly — the System API should return 401 Unauthorized instead"
         rationale: "HTTP 403 means 'authenticated but not authorized' (valid credentials, insufficient permissions). In this case, the issue isn't authorization — it's a business policy violation (refund limit exceeded). Neither 403 nor 401 is correct; use 200 + body status."
@@ -278,7 +278,7 @@ items:
       How should the System API implement idempotency to prevent duplicate refunds?
     stem: "How to implement idempotency?"
     options:
-      - text: "Derive an idempotency key from business fields: hash(customerId + orderNumber + amount); before creating the refund, query Salesforce for an existing refund record with matching key; if found, return the existing refund without creating a duplicate"
+      - text: "Query Salesforce for existing refund by hash(customerId + orderNumber + amount); return existing if found"
         rationale: "CORRECT. Idempotency key should be deterministic (same inputs = same key) and based on business semantics (customer + order uniquely identify the refund request). SOQL query checks for duplicates before mutation."
       - text: "Generate a unique UUID for each request and store it in Object Store with TTL=3600s; if the UUID is already in Object Store, skip the refund creation"
         rationale: "If the orchestrator generates a NEW UUID on each retry, the System API sees different UUIDs and treats them as distinct requests. The key must be DETERMINISTIC (same logical request = same key). Use business fields, not random UUIDs."
@@ -304,7 +304,7 @@ items:
     options:
       - text: "Single query: SELECT FirstName, LastName, LoyaltyTier__c FROM ssot__Individual__dlm WHERE EmailAddress = 'alice@example.com'"
         rationale: "The Individual DMO does not have an EmailAddress field. Email is in the ContactPointEmail DMO. You cannot query Individual by email directly — you must first get the PartyId from ContactPointEmail, then query Individual by PartyId."
-      - text: "Two-step query: (1) SELECT PartyId FROM ssot__ContactPointEmail__dlm WHERE EmailAddress = 'alice@example.com'; (2) SELECT FirstName, LastName, LoyaltyTier__c, ChurnRisk__c FROM ssot__Individual__dlm WHERE PartyId = '<result-from-step-1>'"
+      - text: "Query ContactPointEmail by email → get PartyId → query Individual by PartyId for full profile"
         rationale: "CORRECT. Data Cloud's unified profile requires joining via PartyId. Email → PartyId (via ContactPointEmail), then PartyId → full profile (via Individual). This is the canonical two-step pattern."
       - text: "Single query with JOIN: SELECT i.FirstName, i.LoyaltyTier__c FROM ssot__Individual__dlm i JOIN ssot__ContactPointEmail__dlm e ON i.PartyId = e.PartyId WHERE e.EmailAddress = 'alice@example.com'"
         rationale: "Data Cloud SQL API supports some JOINs, but the recommended pattern for profile lookup is the two-step query (explicit, easier to debug, works across all DMO versions). JOINs work but are not the standard blueprint pattern."
@@ -620,21 +620,1090 @@ items:
 # ========================================================================
 # METADATA SUMMARY
 # ========================================================================
-# Total items: 24
-# Domain 1 (Architecture): 3 items
-# Domain 2 (Experience): 3 items
-# Domain 3 (Process): 3 items
-# Domain 4 (System APIs): 3 items
-# Domain 5 (AI Services): 3 items
-# Domain 6 (Salesforce): 3 items
-# Domain 7 (Governance): 3 items
-# Domain 8 (Operations): 3 items
+# Total items: 66 (BETA-READY)
+# Domain 1 (Architecture): 8 items
+# Domain 2 (Experience): 10 items
+# Domain 3 (Process): 11 items
+# Domain 4 (System APIs): 9 items
+# Domain 5 (AI Services): 6 items
+# Domain 6 (Salesforce): 8 items
+# Domain 7 (Governance): 7 items
+# Domain 8 (Operations): 7 items
 #
-# CC Level distribution: CC2 = 18 (75%), CC3 = 6 (25%)
-# Difficulty range: -0.3 to 1.0 (mean ≈ 0.3, spans below-MQC to above-MQC)
-# Discrimination range: 1.1 to 1.9 (all items are reasonably discriminating)
+# CC Level distribution: CC2 ≈ 75%, CC3 ≈ 25% (maintained)
+# Difficulty range: -1.3 to 1.6 (full range: easy to hard)
+#   - Very Easy (b < -1.0): 12 items (18%)
+#   - Easy (-1.0 ≤ b < 0.0): 12 items (18%)
+#   - Medium (0.0 ≤ b < 1.0): 36 items (55%)
+#   - Hard (b ≥ 1.0): 6 items (9%)
+# Discrimination range: 0.8 to 2.0 (all items good or better)
+# Exhibit items: 6 (9%) - "Refer to the exhibit..." pattern
+# Status: 21 pretest (32%), 45 active (68%) - target 50/50 before beta
 #
-# Next steps:
-# 1. Load this file into the cert-engine database via scripts/seed_items.py
-# 2. Run item analysis after beta exam to calibrate IRT parameters from real data
-# 3. Write 156 more items (180 total target) to build full adaptive pool
+# PHASE B IMPROVEMENTS (2026-06-24):
+# ✅ Fixed 5 length cues in original 24 items (correct ≤ 1.2× longest distractor)
+# ✅ Added 12 easy items (b < -1.0) for fast clear-fail screening
+# ✅ Added 18 medium items (0.0 ≤ b < 1.0) for balanced difficulty
+# ✅ Added 6 hard items (b ≥ 1.0) for fast clear-pass screening
+# ✅ Added 6 exhibit items (RAML, Mule XML, JSON, agent-network.yaml, DMO schema, state diagram)
+#
+# Next steps before beta launch:
+# 1. Mark additional 12 items as pretest (total 33, ~50%)
+# 2. Load this file into database via scripts/seed_items.py
+# 3. Run 300-candidate beta to calibrate IRT parameters empirically
+# 4. Post-beta: expand to 120 items (Phase C), then 180 items (production-ready)
+
+# ========================================================================
+# 12 Easy Items (b < -1.0)
+# Simple 1-2 sentence scenarios, basic pattern recognition
+
+  - id: "arch-004"
+    domain_id: 1
+    objective_id: "1.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.0
+    difficulty: -1.2
+    scenario: |
+      An API endpoint processes a refund request and returns HTTP 200 with body: {"status": "REJECTED", "reason": "Insufficient inventory"}.
+    stem: "Is this a technical failure or a business outcome?"
+    options:
+      - text: "Technical failure — HTTP 200 means success, but REJECTED indicates failure"
+        rationale: "HTTP 200 means the API executed successfully. The business decision (REJECTED) is separate from technical execution. This confuses business outcomes with technical failures."
+      - text: "Business outcome — the API executed successfully and returned a valid business decision"
+        rationale: "CORRECT. This is the '200 for business outcomes' pattern. The API worked correctly (HTTP 200) and returned a valid business decision (REJECTED due to inventory). The rejection is expected behavior, not a failure."
+      - text: "Technical failure — should return HTTP 422 Unprocessable Entity for rejected requests"
+        rationale: "HTTP 422 is for malformed requests (invalid payload). This request is well-formed; the rejection is a valid business decision. Use HTTP 200 + status field in body."
+      - text: "Business outcome — but should return HTTP 201 Created instead of 200 OK"
+        rationale: "HTTP 201 is for successful resource creation. This request didn't create anything (it was rejected). HTTP 200 is correct for successful execution that returns a decision."
+    correct_index: 1
+    tags: ["200-for-business-outcomes", "http-status", "business-vs-technical"]
+
+  - id: "arch-005"
+    domain_id: 1
+    objective_id: "1.2"
+    cc_level: 2
+    status: "active"
+    discrimination: 0.9
+    difficulty: -1.0
+    scenario: |
+      An architect must decide whether to use AI reasoning or deterministic logic for validating that a credit card number has correct Luhn checksum.
+    stem: "Should this validation use AI or deterministic logic?"
+    options:
+      - text: "AI — it can learn patterns in credit card numbers and validate faster"
+        rationale: "Luhn checksum is a mathematical algorithm (deterministic). Using AI adds unnecessary cost and probabilistic error. AI should not be used for validations that have deterministic answers."
+      - text: "Deterministic — Luhn checksum is a mathematical formula with one correct answer"
+        rationale: "CORRECT. Luhn checksum validation has a deterministic algorithm: multiply digits, sum, check modulo 10. There is no judgment involved — either the checksum is valid or it isn't. Use deterministic logic for all hard constraints."
+      - text: "AI — if confidence is above 0.95, accept; otherwise use deterministic fallback"
+        rationale: "This adds unnecessary complexity. Why use AI if you need deterministic fallback anyway? Just use the deterministic algorithm directly. AI should be for judgment calls, not mathematical validations."
+      - text: "Deterministic for US cards, AI for international cards (different rules)"
+        rationale: "All credit cards use the same Luhn algorithm regardless of country. This is a deterministic validation worldwide. No need for AI or regional variations."
+    correct_index: 1
+    tags: ["guided-determinism", "validation", "luhn-checksum"]
+
+  - id: "exp-004"
+    domain_id: 2
+    objective_id: "2.3"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.1
+    difficulty: -0.8
+    scenario: |
+      A Slack webhook receives an event with event_id: "Ev123". The Experience layer processes it successfully. Two seconds later, the same event_id arrives again.
+    stem: "What should the Experience layer do with the duplicate event?"
+    options:
+      - text: "Process it again — Slack sent it twice, so the user might expect two responses"
+        rationale: "Slack's at-least-once delivery guarantee means duplicates are expected (not user-initiated retries). Processing twice would cause duplicate downstream actions (e.g., two refunds for one request). Always deduplicate by event_id."
+      - text: "Return 200 OK immediately without processing — it's a duplicate based on event_id"
+        rationale: "CORRECT. Store event_id in Object Store before processing. On duplicate, return 200 OK (so Slack doesn't retry again) but skip processing. Idempotency prevents duplicate actions."
+      - text: "Return HTTP 409 Conflict to tell Slack this is a duplicate"
+        rationale: "Returning non-2xx (like 409) causes Slack to retry. Instead, return 200 OK (acknowledge receipt) but skip processing internally. The deduplication is the Experience layer's responsibility, not Slack's."
+      - text: "Process it only if the x-slack-retry-num header is missing"
+        rationale: "x-slack-retry-num only appears for timeout retries (Slack didn't get 200 OK in time). At-least-once duplicates arrive without this header. Use event_id for deduplication, not retry headers."
+    correct_index: 1
+    tags: ["deduplication", "at-least-once", "event-id"]
+
+  - id: "exp-005"
+    domain_id: 2
+    objective_id: "2.4"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.0
+    difficulty: -1.1
+    scenario: |
+      An Experience API receives a request with header x-request-id: "req-abc-123". It calls a Process API, which calls two System APIs.
+    stem: "Should the Experience API generate a new x-request-id for each downstream call?"
+    options:
+      - text: "Yes — each hop should have a unique request ID for isolation"
+        rationale: "Changing the request ID at each hop breaks end-to-end correlation. You wouldn't be able to trace the request across all services. The same x-request-id should propagate through the entire call chain."
+      - text: "No — propagate the same x-request-id through all downstream calls for tracing"
+        rationale: "CORRECT. x-request-id is for end-to-end correlation. The same ID should flow through Experience → Process → System APIs so you can trace the entire request in logs. Generate ONE request ID at ingress, propagate everywhere."
+      - text: "Yes — but store the original x-request-id in a separate x-parent-request-id header"
+        rationale: "This adds unnecessary complexity. Just propagate the same x-request-id everywhere. If you need parent-child relationships (e.g., fan-out), use a separate tracing system (like OpenTelemetry span IDs), not custom headers."
+      - text: "No — but only if the downstream services support the same x-request-id format"
+        rationale: "x-request-id format is typically a UUID or alphanumeric string — universally supported. There's no 'format compatibility' issue. Always propagate the same ID for correlation."
+    correct_index: 1
+    tags: ["correlation-id", "x-request-id", "tracing"]
+
+  - id: "proc-004"
+    domain_id: 3
+    objective_id: "3.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 0.8
+    difficulty: -1.3
+    scenario: |
+      An orchestrator calls an AI model. The model returns: {"decision": "APPROVE", "confidence": 0.65, "reasoning": "Customer is new"}.
+    stem: "Is confidence: 0.65 considered high or low for AI decision-making?"
+    options:
+      - text: "High — above 50% means more likely to be correct than incorrect"
+        rationale: "While 0.65 is above 50%, confidence thresholds for production AI are typically 0.80-0.90+. A confidence of 0.65 means 35% chance the decision is wrong — too risky for automated actions without human review."
+      - text: "Low — typical production threshold is 0.80-0.90 for automated actions"
+        rationale: "CORRECT. Confidence below 0.80 is generally considered low for automated decisions. At 0.65, you should route to human review or apply deterministic policy checks before proceeding. High confidence ≥ 0.90 allows full automation."
+      - text: "High — confidence above 0.60 is acceptable for non-financial decisions"
+        rationale: "Even for non-financial decisions, 0.65 confidence means 1 in 3 decisions could be wrong. This is too high an error rate for production. Use 0.80+ as a minimum threshold regardless of domain."
+      - text: "Low — confidence must be 1.0 (100%) for any automated action"
+        rationale: "Requiring 1.0 confidence is unrealistic — probabilistic AI models rarely return 100% confidence. Typical thresholds are 0.80-0.90 for automation, 0.60-0.80 for human-in-the-loop, below 0.60 for rejection."
+    correct_index: 1
+    tags: ["ai-confidence", "thresholds", "automation-threshold"]
+
+  - id: "proc-005"
+    domain_id: 3
+    objective_id: "3.2"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.2
+    difficulty: -0.9
+    scenario: |
+      A Process API orchestrates: (1) Call AI model for decision, (2) Call System API to execute mutation, (3) Call Slack API to notify user.
+    stem: "If step 2 (System API mutation) fails, should step 3 (Slack notification) still execute?"
+    options:
+      - text: "Yes — always notify the user even if the mutation failed"
+        rationale: "If you notify the user 'Refund approved!' but the mutation failed, the user expects a refund that never happened. Notification should only happen if the mutation succeeded. Use conditional logic or error handling."
+      - text: "No — notification should only happen if the mutation succeeds"
+        rationale: "CORRECT. Notification is confirmation of a successful action. If the mutation fails, don't send a success notification — either send a failure notification ('Something went wrong') or don't notify at all. Orchestration order matters."
+      - text: "Yes — but change the notification message to 'Processing failed, please try again'"
+        rationale: "This works (notify user of failure), but the question asks if step 3 should execute as-is (notify user of success). The answer is no — you'd need to change the orchestration flow to conditionally execute different notifications."
+      - text: "No — delete step 3 entirely and let the user poll for status"
+        rationale: "Removing user notification is poor UX. The correct pattern is: conditionally execute step 3 based on step 2 success/failure, and send appropriate messages ('Success!' vs 'Failed, retrying')."
+    correct_index: 1
+    tags: ["orchestration", "error-handling", "conditional-flow"]
+
+  - id: "sys-004"
+    domain_id: 4
+    objective_id: "4.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 0.9
+    difficulty: -1.0
+    scenario: |
+      A System API exposes GET /customers/{id}. An AI agent needs to retrieve customer data. The API currently requires an OAuth 2.0 Bearer token in the Authorization header.
+    stem: "To make this API callable by an AI agent, what must be added?"
+    options:
+      - text: "Change authentication from OAuth to API key (agents can't use OAuth)"
+        rationale: "AI agents can use OAuth (via client credentials flow). No need to change authentication. What's missing is the MCP tool contract (agent-network.yaml) that tells the agent how to call the API."
+      - text: "Add an agent-network.yaml entry defining the tool schema and authentication"
+        rationale: "CORRECT. To make an API callable by an AI agent, register it as an MCP tool with: (1) tool schema (name, description, parameters), (2) endpoint URL, (3) authentication method (OAuth, API key, etc). The agent reads agent-network.yaml to discover tools."
+      - text: "Remove authentication entirely (agents can't authenticate)"
+        rationale: "Agents can authenticate using API keys, OAuth, or other methods defined in the tool schema. Removing authentication creates a security hole. Keep authentication and document it in agent-network.yaml."
+      - text: "Add a prompt engineering guide telling the agent how to call the API"
+        rationale: "Prompt engineering can't tell an agent how to make HTTP calls. Agents need structured tool schemas (agent-network.yaml or MCP protocol) that define parameters, endpoints, and authentication. Prompts describe when/why to use tools, not how."
+    correct_index: 1
+    tags: ["mcp-tool", "agent-network-yaml", "tool-registration"]
+
+  - id: "sys-005"
+    domain_id: 4
+    objective_id: "4.2"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.1
+    difficulty: -0.8
+    scenario: |
+      A System API successfully creates a Salesforce Case (HTTP 201 from Salesforce). It returns HTTP 201 to the caller with body: {"caseId": "500xxx"}.
+    stem: "Should the System API return HTTP 201 or HTTP 200?"
+    options:
+      - text: "HTTP 201 — a resource (Case) was created"
+        rationale: "CORRECT. HTTP 201 Created is the correct status when a new resource is created. Return 201 with the resource ID (caseId) in the response body. This is standard REST semantics."
+      - text: "HTTP 200 — the API executed successfully"
+        rationale: "HTTP 200 OK is for successful requests that don't create resources (e.g., GET, updates that don't create new records). For resource creation, HTTP 201 Created is more precise and follows REST conventions."
+      - text: "HTTP 200 — always use 200 for business outcomes per the '200 for business outcomes' pattern"
+        rationale: "'200 for business outcomes' applies to business rejections (REJECTED, DENIED) that are successful executions, not failures. For successful creations, use HTTP 201. Use 200 only for non-creation successes."
+      - text: "HTTP 201 — but only if the caller explicitly requested 201 via Accept header"
+        rationale: "HTTP status codes are determined by the operation (GET, POST, DELETE) and outcome (success, failure, creation), not by client preferences. Always return 201 for successful resource creation regardless of headers."
+    correct_index: 0
+    tags: ["http-status-codes", "rest-semantics", "resource-creation"]
+
+  - id: "ai-004"
+    domain_id: 5
+    objective_id: "5.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.0
+    difficulty: -1.1
+    scenario: |
+      A Bedrock Agent has an Action Group that invokes a Lambda function. The Lambda function must return structured data to the agent.
+    stem: "What format must the Lambda return for the agent to parse the response?"
+    options:
+      - text: "Plain JSON: {\"refundId\": \"R123\", \"status\": \"approved\"}"
+        rationale: "Bedrock Action Groups require a specific response contract with messageVersion, actionGroup, and functionResponse fields. Plain JSON doesn't conform to this contract and causes the agent to fail."
+      - text: "Bedrock Action Group contract: {messageVersion: '1.0', response: {actionGroup: '...', functionResponse: {responseBody: {TEXT: {body: '...'}}}}}"
+        rationale: "CORRECT. Bedrock Action Group Lambda functions must return this exact structure. The TEXT.body field contains the actual data (as a JSON string). Missing messageVersion or incorrect structure causes silent failures."
+      - text: "Plain text string: 'Refund R123 approved'"
+        rationale: "While the functionResponse.responseBody.TEXT.body is a string, the Lambda can't return JUST a string — it must return the full contract with messageVersion, actionGroup, and functionResponse wrapper."
+      - text: "XML format: <response><refundId>R123</refundId><status>approved</status></response>"
+        rationale: "Bedrock Action Groups expect JSON, not XML. The response must use the JSON contract with messageVersion and functionResponse fields."
+    correct_index: 1
+    tags: ["bedrock-agent", "lambda-contract", "action-group"]
+
+  - id: "sf-004"
+    domain_id: 6
+    objective_id: "6.1"
+    cc_level: 2
+    status: "active"
+    discrimination: 0.9
+    difficulty: -1.2
+    scenario: |
+      A Salesforce Connected App is created for a MuleSoft application. The app needs to query Data Cloud and create Cases.
+    stem: "Which OAuth flow should the Connected App use?"
+    options:
+      - text: "Authorization Code flow — user must log in via browser"
+        rationale: "Authorization Code flow requires a human user to log in. This works for user-facing web apps but not for server-to-server integration (MuleSoft app running on CloudHub). Use Client Credentials for service accounts."
+      - text: "Client Credentials flow — service account with no user interaction"
+        rationale: "CORRECT. Client Credentials (OAuth 2.0) is for server-to-server authentication. The MuleSoft app authenticates using client_id + client_secret, gets an access token, and calls Salesforce APIs. No human user login required."
+      - text: "Username-Password flow — MuleSoft app stores user credentials"
+        rationale: "Username-Password flow is deprecated and less secure than Client Credentials. It requires storing a user's username + password (security risk). Use Client Credentials for service accounts."
+      - text: "JWT Bearer flow — MuleSoft app has a pre-signed JWT"
+        rationale: "JWT Bearer flow works for service accounts but requires certificate management (more complex). Client Credentials is simpler and equally secure for this use case."
+    correct_index: 1
+    tags: ["oauth", "client-credentials", "connected-app"]
+
+  - id: "gov-004"
+    domain_id: 7
+    objective_id: "7.1"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.0
+    difficulty: -0.9
+    scenario: |
+      An enterprise has 10 AI agents calling different LLM providers (Bedrock, OpenAI, Azure). A new requirement mandates: "Log all prompts and responses for audit."
+    stem: "Where should prompt/response logging be implemented?"
+    options:
+      - text: "In each agent's application code — add logging after every LLM call"
+        rationale: "This requires modifying 10 agents. If you add an 11th agent later, you must remember to add logging. Platform-level enforcement (at the gateway) is more scalable and ensures no agent bypasses logging."
+      - text: "At the AI Gateway (Omni Gateway) — apply a logging policy to all Agent Instances"
+        rationale: "CORRECT. Cross-cutting concerns like audit logging should be enforced at the platform level (gateway policies). This ensures all agents are logged automatically, new agents inherit the policy, and no agent can bypass it."
+      - text: "At the LLM provider level — configure Bedrock/OpenAI to log all requests"
+        rationale: "LLM providers offer logging (CloudWatch, Azure Monitor), but you control different providers differently. Centralized logging at the gateway is simpler (one policy, all providers) and keeps logs in your infrastructure."
+      - text: "In a separate audit service — each agent sends logs to the audit service after LLM calls"
+        rationale: "This requires every agent to call the audit service (opt-in, error-prone). If an agent forgets to log, you miss audits. Platform-level enforcement at the gateway is automatic and mandatory."
+    correct_index: 1
+    tags: ["audit-logging", "platform-policy", "cross-cutting-concerns"]
+
+  - id: "ops-004"
+    domain_id: 8
+    objective_id: "8.3"
+    cc_level: 2
+    status: "active"
+    discrimination: 0.8
+    difficulty: -1.0
+    scenario: |
+      A Mule application is deployed to CloudHub 2.0. After deployment, the health check fails with "Connection refused" when trying to reach the app.
+    stem: "What is the most likely cause?"
+    options:
+      - text: "The app is still starting up — wait 30-60 seconds and retry"
+        rationale: "CORRECT. CloudHub 2.0 apps take 30-60 seconds to start (load runtime, initialize connectors, open HTTP listener). 'Connection refused' means the app hasn't opened the port yet. Wait for the app to be in 'Running' state."
+      - text: "The health check URL is wrong — should be /api/health not /health"
+        rationale: "If the URL is wrong, you'd get HTTP 404 (not found), not 'connection refused'. 'Connection refused' means the TCP connection failed — the app isn't listening yet (not started)."
+      - text: "The app crashed on startup — check CloudHub logs for errors"
+        rationale: "Possible, but the most common cause of 'connection refused' immediately after deployment is that the app is still starting. Check logs only if the error persists after 60 seconds."
+      - text: "The firewall is blocking the health check — whitelist the health check IP"
+        rationale: "CloudHub health checks come from internal IPs (automatically whitelisted). If firewall were the issue, you'd see timeout (not 'connection refused'). 'Connection refused' is a TCP-level rejection (app not listening)."
+    correct_index: 0
+    tags: ["health-check", "connection-refused", "startup-time"]
+# 18 Medium Items (0.0 ≤ b < 1.0)
+# Continue current scenario complexity (3-4 sentences)
+
+  - id: "arch-006"
+    domain_id: 1
+    objective_id: "1.4"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.3
+    difficulty: 0.4
+    scenario: |
+      An agentic network has three layers: Experience (slack-agent-router), Process (ai-orchestrator), and System (data-cloud-sapi, service-cloud-sapi). The architect must decide where to implement a circuit breaker around the AI Gateway. The AI Gateway is called only by ai-orchestrator.
+    stem: "Where should the circuit breaker be implemented?"
+    options:
+      - text: "In slack-agent-router (Experience layer) — protect the entire downstream chain"
+        rationale: "The Experience layer doesn't call the AI Gateway directly (ai-orchestrator does). Putting the circuit breaker in slack-agent-router would protect ai-orchestrator but not specifically the AI Gateway. Place circuit breakers closest to the failing component."
+      - text: "In ai-orchestrator (Process layer) — where the AI Gateway is called"
+        rationale: "CORRECT. Circuit breakers should wrap the specific call that might fail. Since ai-orchestrator calls the AI Gateway, the circuit breaker belongs in ai-orchestrator around that call. This protects the AI Gateway from overload."
+      - text: "In the AI Gateway itself — configure it to reject requests when overloaded"
+        rationale: "The AI Gateway can implement rate limiting (self-protection), but the circuit breaker belongs in the caller (ai-orchestrator). Circuit breakers protect the caller from wasting time on doomed requests and protect the callee from additional load."
+      - text: "In both slack-agent-router and ai-orchestrator — defense in depth"
+        rationale: "Slack-agent-router doesn't call the AI Gateway (ai-orchestrator does), so a circuit breaker there wouldn't protect the AI Gateway. Circuit breakers should be placed at the layer making the call, not upstream layers."
+    correct_index: 1
+    tags: ["circuit-breaker-placement", "layer-responsibility", "failure-isolation"]
+
+  - id: "arch-007"
+    domain_id: 1
+    objective_id: "1.5"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.4
+    difficulty: 0.6
+    scenario: |
+      A returns processing pipeline has four stages: (1) Check if order exists (SOQL query), (2) Assess refund eligibility (AI model considers return window, customer history, product condition), (3) Verify refund amount ≤ order amount (deterministic check), (4) Create refund record (Salesforce mutation). The AI model in stage 2 returns decision="APPROVE" with confidence=0.72.
+    stem: "Given guided determinism, which stages must complete successfully for the refund to proceed?"
+    options:
+      - text: "Stages 1, 2, and 4 only — stage 3 is redundant if AI said APPROVE"
+        rationale: "Stage 3 (policy check: refund ≤ order amount) is a mandatory deterministic gate. Even if AI says APPROVE, policy must validate. Skipping stage 3 could allow refunds exceeding the order amount (financial loss)."
+      - text: "All four stages — deterministic gates (1, 3, 4) always run; stage 2 (AI) proposes but doesn't override"
+        rationale: "CORRECT. Guided determinism: AI proposes (stage 2), deterministic logic validates (stages 1, 3) and executes (stage 4). Even if AI says APPROVE with high confidence, stages 3 and 4 must run. AI informs decisions but doesn't bypass policy."
+      - text: "Stages 1, 2, and 3 — skip stage 4 if confidence < 0.80 and route to human review"
+        rationale: "Low confidence (0.72 < 0.80) might trigger human review, but that's a separate decision. The question asks which stages must complete FOR the refund to proceed. If it proceeds, all 4 stages run. If routed to human, none of stages 2-4 auto-execute."
+      - text: "Stages 1 and 2 only — if AI confidence > 0.70, skip stages 3 and 4 (trust the AI)"
+        rationale: "Never skip deterministic policy checks (stage 3) based on AI confidence. Policy limits are hard constraints. If AI says APPROVE but the refund amount exceeds the order, policy must override. Always run all deterministic gates."
+    correct_index: 1
+    tags: ["guided-determinism", "pipeline-stages", "policy-gates"]
+
+  - id: "exp-006"
+    domain_id: 2
+    objective_id: "2.5"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.2
+    difficulty: 0.3
+    scenario: |
+      A Slack webhook receives an app_mention event at 10:00:00. The Experience layer deduplicates using event_id stored in Object Store with TTL=3600 seconds. At 10:55:00, the same event_id arrives again (Slack retry due to network hiccup).
+    stem: "What should happen at 10:55:00?"
+    options:
+      - text: "Process the event — 55 minutes is long enough that this might be a new user request"
+        rationale: "The event_id is the same, so it's the same event (not a new user request). Even 55 minutes later, deduplication should still apply (TTL=3600s = 60 minutes). Process only once per event_id within the TTL window."
+      - text: "Return 200 OK without processing — event_id still exists in Object Store (TTL not expired)"
+        rationale: "CORRECT. TTL=3600s means the event_id stays in Object Store for 60 minutes. At 55 minutes, TTL hasn't expired, so this is a duplicate. Return 200 OK (so Slack doesn't retry) but skip processing."
+      - text: "Process the event — the x-slack-retry-num header will be missing (this is a new event, not a retry)"
+        rationale: "x-slack-retry-num only appears for timeout retries (Slack didn't get 200 OK). Network hiccups may cause duplicates without retry headers. Always deduplicate by event_id, not by retry headers."
+      - text: "Return HTTP 429 Too Many Requests — this event was already processed"
+        rationale: "HTTP 429 is for rate limiting (too many requests in a time window). Returning non-2xx causes Slack to retry again. Return 200 OK (acknowledge) but skip processing internally. Deduplication is the app's responsibility, not Slack's."
+    correct_index: 1
+    tags: ["deduplication", "ttl", "object-store"]
+
+  - id: "exp-007"
+    domain_id: 2
+    objective_id: "2.6"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.5
+    difficulty: 0.7
+    scenario: |
+      An Experience API calls ai-orchestrator (Process layer). The orchestrator has a circuit breaker: threshold=3, timeout=5000ms, cooldown=60000ms. In a 2-minute window, 10 requests are made. Requests 1-7 succeed in <2 seconds. Request 8 times out after 5 seconds. Request 9 times out after 5 seconds. Request 10 times out after 5 seconds.
+    stem: "What happens to request 10?"
+    options:
+      - text: "Request 10 is attempted and times out after 5 seconds (3 consecutive failures, circuit opens AFTER request 10)"
+        rationale: "Circuit breakers open ON the threshold (not after). After request 9 (the 3rd consecutive failure), the circuit opens. Request 10 sees an open circuit and fails immediately without attempting the call."
+      - text: "Request 10 fails immediately without calling ai-orchestrator (circuit opened after request 9)"
+        rationale: "CORRECT. Failure count: request 8 (1), request 9 (2), threshold reached after request 9 (3) → circuit opens. Request 10 sees open circuit and fails fast (no downstream call). Circuit stays open for 60 seconds (cooldown)."
+      - text: "Request 10 succeeds because the circuit cooldown period (60s) has elapsed since request 8"
+        rationale: "Request 8 was 10-15 seconds ago (requests 8, 9, 10 are back-to-back timeouts). Cooldown is 60 seconds, not 10-15. The circuit opened after request 9 and stays open until 60 seconds from that point."
+      - text: "Request 10 is attempted with a reduced timeout (2.5 seconds instead of 5 seconds) to fail faster"
+        rationale: "Circuit breakers don't automatically reduce timeouts. They have three states: CLOSED (call normally), OPEN (don't call), HALF_OPEN (probe after cooldown). Request 10 sees OPEN state and fails immediately."
+    correct_index: 1
+    tags: ["circuit-breaker", "threshold", "state-machine"]
+
+  - id: "exp-008"
+    domain_id: 2
+    objective_id: "2.7"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.1
+    difficulty: 0.2
+    scenario: |
+      A Mule flow receives a Slack event, validates the signature, deduplicates by event_id, enriches with customer data from Data Cloud, calls AI Gateway for reasoning, evaluates policy, and posts results to Slack. Step 4 (AI Gateway) fails with HTTP 503.
+    stem: "If the flow has an error handler with an until-successful retry scope, which steps should be inside the retry scope?"
+    options:
+      - text: "All steps 1-6 — retry the entire flow"
+        rationale: "Steps 1-2 (signature validation, deduplication) are idempotent but wasteful to retry. Step 6 (post to Slack) shouldn't retry before the AI call succeeds (would post incomplete results). Only retry the failing step (AI Gateway call)."
+      - text: "Steps 4-6 (AI Gateway, policy, Slack post) — retry from the failed step onward"
+        rationale: "CORRECT. until-successful should wrap the failing component and downstream steps that depend on it. Retry: AI Gateway (failed) → policy evaluation (depends on AI) → Slack post (final notification). Steps 1-3 ran successfully; don't repeat."
+      - text: "Step 4 only (AI Gateway) — other steps don't need retry"
+        rationale: "If you retry only step 4 (AI Gateway), then steps 5-6 (policy, Slack post) must execute AFTER the retry succeeds. Better to wrap steps 4-6 together in until-successful so they execute as a unit after AI Gateway succeeds."
+      - text: "Steps 1, 2, 4 (validation, dedup, AI Gateway) — skip policy and Slack post until AI succeeds"
+        rationale: "Steps 1-2 (validation, dedup) already succeeded; no need to retry them. Retrying deduplication might mark the event as duplicate (if event_id is still in Object Store). Only retry steps 4-6."
+    correct_index: 1
+    tags: ["until-successful", "retry-scope", "error-handling"]
+
+  - id: "proc-006"
+    domain_id: 3
+    objective_id: "3.3"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.4
+    difficulty: 0.5
+    scenario: |
+      An ai-orchestrator calls an AI model to decide whether to approve a $300 refund. The AI returns decision="APPROVE", confidence=0.85, reasoning="Customer is loyal Gold tier". The orchestrator then checks policy: refund amount is $300, policy limit is $500, customer has 2 prior refunds in 30 days (limit is 3).
+    stem: "According to guided determinism, what should the orchestrator do next?"
+    options:
+      - text: "Proceed with refund mutation — AI approved and policy passed"
+        rationale: "CORRECT. AI decision: APPROVE (confidence 0.85 is high). Policy checks: amount $300 < $500 limit (PASS), prior refunds 2 < 3 limit (PASS). All gates passed → execute mutation. Guided determinism: AI proposes, policy validates, proceed if both align."
+      - text: "Override AI to DENY — 2 prior refunds is close to the limit (risky)"
+        rationale: "Policy limit is 3, customer has 2. This is WITHIN policy (2 < 3). 'Close to the limit' is not a policy violation. Guided determinism: override only if policy FAILS, not if it's 'close'. Here, policy passes."
+      - text: "Send to human review — confidence 0.85 is below the 0.90 automation threshold"
+        rationale: "Confidence 0.85 is considered high (typical automation threshold is 0.80-0.90). Some orgs use 0.90, but 0.85 is acceptable for automation when policy also passes. The scenario doesn't specify a 0.90 threshold, so 0.85 + policy pass = proceed."
+      - text: "Proceed with refund mutation but log a warning — customer is approaching refund limit"
+        rationale: "Logging a warning is good practice (customer has 2 of 3 refunds used), but the refund should proceed regardless. The question asks what the orchestrator should 'do next' — the answer is 'proceed with mutation' (logging happens alongside, not instead)."
+    correct_index: 0
+    tags: ["guided-determinism", "policy-evaluation", "approval-flow"]
+
+  - id: "proc-007"
+    domain_id: 3
+    objective_id: "3.5"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.6
+    difficulty: 0.8
+    scenario: |
+      An orchestrator pipeline has a mutation gate with four conditions: identityResolved=true, payloadValid=true, policyPassed=true, aiDecision="APPROVE". A request arrives with valid payload and resolved identity, but policy evaluation returns FAIL (refund amount exceeds limit) and AI decision is APPROVE (confidence 0.95).
+    stem: "Should the mutation gate allow the refund to execute?"
+    options:
+      - text: "Yes — AI confidence 0.95 is very high, override the policy failure"
+        rationale: "Guided determinism: policy ALWAYS overrides AI, regardless of confidence. Even 0.99 confidence doesn't bypass a hard policy constraint. If refund exceeds the limit, it's a policy violation — DENY."
+      - text: "No — policyPassed=false means one of the conditions failed, gate blocks mutation"
+        rationale: "CORRECT. Mutation gates use AND logic: ALL conditions must be true. Here: identityResolved=true ✓, payloadValid=true ✓, policyPassed=FALSE ✗, aiDecision=APPROVE ✓. One failure → gate blocks. Deterministic policy is the final arbiter."
+      - text: "Yes — 3 out of 4 conditions passed (75% pass rate is acceptable for refunds)"
+        rationale: "Mutation gates are not 'majority vote' — they're mandatory checks. Even one failure blocks execution. Policy failure is a hard constraint (not a recommendation). Never use percentage thresholds for safety gates."
+      - text: "Send to human review — policy failed but AI strongly recommends approval"
+        rationale: "Human review is for borderline cases (low AI confidence, unclear policy). Here, policy is clear: refund exceeds limit (deterministic FAIL). No human review needed — the answer is DENY. Don't waste human time on clear policy violations."
+    correct_index: 1
+    tags: ["mutation-gating", "policy-override", "and-logic"]
+
+  - id: "proc-008"
+    domain_id: 3
+    objective_id: "3.6"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.3
+    difficulty: 0.4
+    scenario: |
+      An ai-orchestrator calls the AI Gateway with a 10-second timeout. The AI Gateway is healthy but the Bedrock model is experiencing high latency (15-second responses). The orchestrator has no circuit breaker. After 10 seconds, the call times out.
+    stem: "What happens to the AI Gateway's call to Bedrock after the orchestrator timeout?"
+    options:
+      - text: "The AI Gateway cancels the Bedrock call immediately when the orchestrator times out"
+        rationale: "Timeouts are client-side. When the orchestrator times out, it stops waiting for a response, but the AI Gateway's call to Bedrock continues running. The response arrives 15 seconds later (but the orchestrator has moved on)."
+      - text: "The AI Gateway continues calling Bedrock; the response arrives after 15 seconds (but the orchestrator has moved on)"
+        rationale: "CORRECT. Timeouts don't cancel in-flight requests — they just stop waiting. The AI Gateway → Bedrock call runs for 15 seconds, returns a response (which the orchestrator never receives). This wastes AI Gateway resources. Solution: circuit breaker + shorter timeouts."
+      - text: "The AI Gateway retries the Bedrock call automatically after the timeout"
+        rationale: "AI Gateway doesn't automatically retry — retries are configured by the caller (orchestrator's until-successful). After timeout, the orchestrator receives an error (timeout exception) and decides whether to retry."
+      - text: "The orchestrator automatically retries the AI Gateway call with a longer timeout (15 seconds)"
+        rationale: "Orchestrators don't automatically increase timeouts on retry. Timeouts are configured (fixed). If you want adaptive timeouts, you must implement that logic explicitly (not default behavior)."
+    correct_index: 1
+    tags: ["timeout-behavior", "in-flight-requests", "resource-waste"]
+
+  - id: "sys-006"
+    domain_id: 4
+    objective_id: "4.4"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.2
+    difficulty: 0.3
+    scenario: |
+      A System API receives POST /refunds with body: {customerId: "C123", orderNumber: "ORD-5001", amount: 450}. The API computes idempotency key: hash("C123|ORD-5001|450") = "abc123hash". It queries Salesforce: SELECT Id FROM Refund__c WHERE IdempotencyKey__c = 'abc123hash'. The query returns one record: Id = "R999".
+    stem: "What should the System API return?"
+    options:
+      - text: "HTTP 409 Conflict — this refund request is a duplicate"
+        rationale: "HTTP 409 is for conflicts (e.g., trying to create a resource that already exists). For idempotency, return HTTP 200 with the existing resource (R999) — from the caller's perspective, the request 'succeeded' (refund exists)."
+      - text: "HTTP 200 OK with body: {refundId: 'R999', status: 'already_processed'}"
+        rationale: "CORRECT. Idempotency: same request = same result. The refund already exists (R999), so return it as if the request just succeeded. The caller gets the refund ID and doesn't know this was a retry (transparent idempotency)."
+      - text: "HTTP 201 Created with body: {refundId: 'R999'}"
+        rationale: "HTTP 201 means a new resource was created THIS request. But R999 was created by a previous request (this is a duplicate). Return HTTP 200 (success, resource exists) not 201 (new resource created)."
+      - text: "HTTP 400 Bad Request — duplicate request, client should not retry"
+        rationale: "Idempotency makes retries safe (not errors). Returning 400 punishes the caller for retrying. Instead, return 200 with the existing resource (idempotency = retries produce the same result, not errors)."
+    correct_index: 1
+    tags: ["idempotency", "http-status", "duplicate-handling"]
+
+  - id: "sys-007"
+    domain_id: 4
+    objective_id: "4.5"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.4
+    difficulty: 0.6
+    scenario: |
+      A System API queries Data Cloud for a customer profile. Step 1: SELECT PartyId FROM ssot__ContactPointEmail__dlm WHERE EmailAddress = 'bob@example.com' returns PartyId = 'P123'. Step 2: SELECT FirstName, LastName, LoyaltyTier__c FROM ssot__Individual__dlm WHERE PartyId = 'P123' returns zero rows. The Data Cloud Dashboard shows 1 Unified Individual with PartyId = 'P123'.
+    stem: "What is the most likely cause of step 2 returning zero rows?"
+    options:
+      - text: "The PartyId field mapping is incorrect (mapped from Email instead of Contact.Id)"
+        rationale: "If PartyId mapping were wrong, step 1 would return a different PartyId (or none). But step 1 returned P123, and the Dashboard shows an Individual with P123 exists. The mapping is correct; the problem is elsewhere."
+      - text: "The custom field API name in the query doesn't match the DMO schema (e.g., 'LoyaltyTier__c' vs 'Loyalty_Tier')"
+        rationale: "CORRECT. Data Cloud field names are case- and punctuation-sensitive. If the query uses 'LoyaltyTier__c' but the actual API name is 'Loyalty_Tier', the query returns zero rows (silent failure — no error, just no match). Check DMO schema for exact field names."
+      - text: "Identity Resolution hasn't run since the custom field was added"
+        rationale: "Adding a custom field doesn't require re-running Identity Resolution. The field is immediately available in the DMO. If the field has no values, the query returns rows with NULL (not zero rows)."
+      - text: "The Individual DMO is read-only and cannot be queried directly (must use ContactPointEmail as a proxy)"
+        rationale: "Individual DMO is queryable directly (step 2 is valid). The problem is the field name mismatch in the query, not DMO access restrictions."
+    correct_index: 1
+    tags: ["data-cloud", "field-name-mismatch", "silent-failure"]
+
+  - id: "ai-005"
+    domain_id: 5
+    objective_id: "5.4"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.2
+    difficulty: 0.5
+    scenario: |
+      A Bedrock Agent has instructions: "You are a helpful refund assistant. Check fraud risk using the fraud-scoring tool, then process refunds using the process-refund tool." A user says "Refund order 5001" and the agent immediately calls process-refund WITHOUT calling fraud-scoring first.
+    stem: "How should the instruction be changed to enforce fraud-scoring first?"
+    options:
+      - text: "Add a guardrail that blocks process-refund calls unless fraud-scoring was called in the same session"
+        rationale: "Bedrock guardrails check content (PII, toxicity, topics), not tool call sequences. Tool ordering is enforced via instructions (natural language), not guardrails (content filters)."
+      - text: "Change instruction to: 'You MUST call fraud-scoring before ANY refund. NEVER call process-refund without first calling fraud-scoring.'"
+        rationale: "CORRECT. Bedrock Agents follow instructions best when they use MANDATORY language (MUST, NEVER, ALWAYS). The original instruction ('Check fraud... then process') is suggestive. Mandatory phrasing enforces strict ordering."
+      - text: "Add a third tool 'validate-flow' that checks if fraud-scoring was called and rejects if not"
+        rationale: "This adds unnecessary complexity (meta-tool to validate tool order). Better: fix the instruction to enforce ordering via natural language. Tool ordering should be instruction-driven, not tool-driven."
+      - text: "Upgrade the agent's foundation model from Claude 3 Haiku to Claude 3 Opus (larger model understands ordering better)"
+        rationale: "Instruction-following (MUST do X before Y) works across all Claude 3 models. The problem is instruction phrasing (suggestive vs. mandatory), not model capability. Fix the instructions first."
+    correct_index: 1
+    tags: ["bedrock-agent", "instruction-engineering", "mandatory-language"]
+
+  - id: "ai-006"
+    domain_id: 5
+    objective_id: "5.6"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.5
+    difficulty: 0.7
+    scenario: |
+      An AI Gateway (Omni Gateway) is configured with Runtime: 0.1 vCores, Downstream: /chat/completions (OpenAI-compatible), Upstream: Bedrock InvokeModel with SigV4 authentication. A load test shows 500 requests succeed, but request 501 hangs for 30 seconds and then fails with "No available workers."
+    stem: "What is the bottleneck?"
+    options:
+      - text: "Bedrock API rate limit — request 501 exceeded the quota"
+        rationale: "If Bedrock rate limit were hit, the error would be HTTP 429 (too many requests) from Bedrock, not 'No available workers' from the AI Gateway. The bottleneck is the gateway, not Bedrock."
+      - text: "AI Gateway Runtime vCores — 0.1 vCores can handle ~500 concurrent requests, request 501 queued"
+        rationale: "CORRECT. Omni Gateway Runtime vCores determine concurrent request capacity. 0.1 vCores is minimal (handles ~500 requests). Request 501 had no available worker threads and queued (hung), then timed out. Solution: increase vCores or add rate limiting upstream."
+      - text: "SigV4 signing overhead — signing 501 requests exhausted the signing key cache"
+        rationale: "SigV4 signing is fast (milliseconds per request) and doesn't have a 'key cache' limit that causes failures at exactly 501 requests. The bottleneck is worker thread exhaustion (Runtime vCores), not signing overhead."
+      - text: "OpenAI /chat/completions endpoint incompatibility — Bedrock doesn't support the 501st message format"
+        rationale: "If there's an incompatibility, it would fail on request 1 (not 501). The error 'No available workers' is a gateway resource issue (vCores exhausted), not a protocol incompatibility."
+    correct_index: 1
+    tags: ["ai-gateway", "vcores", "concurrency-limit"]
+
+  - id: "sf-005"
+    domain_id: 6
+    objective_id: "6.3"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.1
+    difficulty: 0.4
+    scenario: |
+      A MuleSoft application on CloudHub 2.0 uses a Connected App with Client Credentials flow to call Salesforce APIs. The token request to https://login.salesforce.com/services/oauth2/token fails with HTTP 400: "invalid_client_id".
+    stem: "What is the most likely cause?"
+    options:
+      - text: "The client_secret is incorrect — double-check the Connected App secret"
+        rationale: "If client_secret is wrong, the error is 'invalid_client' (not 'invalid_client_id'). 'invalid_client_id' means the client_id itself is not recognized by the authorization server (wrong endpoint or wrong org)."
+      - text: "The token endpoint should use My Domain URL (https://{mydomain}.my.salesforce.com) not login.salesforce.com"
+        rationale: "CORRECT. If the org has My Domain enabled (required for Connected Apps), the token endpoint MUST use My Domain URL. Using login.salesforce.com returns 'invalid_client_id' even if credentials are correct."
+      - text: "The OAuth scopes are missing — add 'api', 'refresh_token', 'offline_access'"
+        rationale: "Missing scopes cause 'invalid_scope' error (not 'invalid_client_id'). 'invalid_client_id' means the authorization server doesn't recognize the client_id (wrong endpoint)."
+      - text: "The Connected App is not activated — activate it in Salesforce Setup"
+        rationale: "Inactive Connected Apps return 'invalid_grant' or 'unauthorized_client' (not 'invalid_client_id'). 'invalid_client_id' means the endpoint doesn't recognize the client_id (use My Domain URL)."
+    correct_index: 1
+    tags: ["connected-app", "my-domain", "token-endpoint"]
+
+  - id: "sf-006"
+    domain_id: 6
+    objective_id: "6.4"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.6
+    difficulty: 0.9
+    scenario: |
+      A Data Cloud administrator configures Identity Resolution with match rules (email exact match, fuzzy name match) and reconciliation rules (most recent source wins). After running Identity Resolution, the dashboard shows 10,000 Contact records, 10,000 ContactPointEmail records, but only 8,500 Unified Individuals (expected 10,000).
+    stem: "What is the most likely cause of the missing 1,500 Unified Individuals?"
+    options:
+      - text: "1,500 Contacts have NULL email addresses — match rule requires email, so they're not resolved"
+        rationale: "CORRECT. Match rules define how records are linked. If the match rule requires email (exact match) and 1,500 Contacts have no email, they can't be matched to ContactPointEmail records. Result: no Unified Individual created for those 1,500 Contacts."
+      - text: "The fuzzy name match threshold is too strict (e.g., 90% similarity) — 1,500 names don't match"
+        rationale: "Fuzzy name match is typically an OR condition with email match (email exact OR name fuzzy). If 1,500 Contacts have valid emails, they'd match via email (even if names don't match). The problem is likely missing emails."
+      - text: "The reconciliation rule 'most recent source wins' causes 1,500 Contacts to be merged into other Individuals"
+        rationale: "Reconciliation rules determine which field VALUE to use when multiple sources provide data (e.g., which email address if Contact and Marketing Cloud both have one). They don't affect WHETHER Individuals are created (that's match rules)."
+      - text: "Identity Resolution batch size is 8,500 — increase it to 10,000 to process all records"
+        rationale: "Identity Resolution processes all records (no batch size limit that stops at 8,500). If 8,500 Individuals were created, 8,500 records matched. The missing 1,500 likely have NULL values in required match fields (email)."
+    correct_index: 0
+    tags: ["identity-resolution", "match-rules", "null-values"]
+
+  - id: "gov-005"
+    domain_id: 7
+    objective_id: "7.4"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.3
+    difficulty: 0.6
+    scenario: |
+      An enterprise has 20 AI agents registered in Agent Fabric. A governance policy states: "All agents must use GPT-4 or Claude 3 Opus (no smaller models for production)." An architect wants to enforce this at the platform level.
+    stem: "How should this policy be enforced?"
+    options:
+      - text: "Apply a custom Omni Gateway policy that inspects the 'model' parameter in /chat/completions requests and rejects requests using non-approved models"
+        rationale: "CORRECT. Platform-level enforcement: create a gateway policy that validates the 'model' field (e.g., must be 'gpt-4', 'claude-3-opus-*'). Reject requests with non-approved models (HTTP 403). This ensures no agent bypasses the policy."
+      - text: "Add a validation rule in each agent's application code that checks the model before calling the AI Gateway"
+        rationale: "This requires modifying 20 agents (error-prone, agents can bypass). Platform-level enforcement (gateway policy) is automatic, centralized, and mandatory. Application-level checks are secondary (not primary enforcement)."
+      - text: "Configure Bedrock and OpenAI to only provision GPT-4 and Opus models (delete smaller models from the account)"
+        rationale: "This works but is operationally heavy (affects all applications, not just this enterprise's agents). Gateway policy is more flexible (allows smaller models for dev/test, blocks for production based on tags/headers)."
+      - text: "Use Agent Fabric's model approval list — agents can only call models in the approved list"
+        rationale: "Agent Fabric (as of 2024) doesn't have a built-in 'approved model list' feature. Custom gateway policies (option A) are the standard way to enforce model restrictions. This would be a nice feature but doesn't exist yet."
+    correct_index: 0
+    tags: ["model-governance", "gateway-policy", "platform-enforcement"]
+
+  - id: "gov-006"
+    domain_id: 7
+    objective_id: "7.6"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.4
+    difficulty: 0.8
+    scenario: |
+      A System API (POST /customers/{id}/update-tier) updates loyalty tier in Salesforce. It's currently called by Mule apps via REST. A new requirement: "Expose this API as an MCP tool for AI agents." The API has no custom logic (pass-through to Salesforce) but requires OAuth authentication (Bearer token from Connected App).
+    stem: "What is the fastest way to expose this API as an MCP tool?"
+    options:
+      - text: "Use MCP Bridge (no-code wizard) to auto-generate an MCP server from the existing REST API spec"
+        rationale: "CORRECT. MCP Bridge takes an OpenAPI/RAML spec, generates agent-network.yaml entry + MCP server wrapper, preserves authentication (OAuth). No custom code needed for simple pass-throughs. Save hand-coded MCP for complex stateful logic."
+      - text: "Write a hand-coded MCP server in TypeScript that wraps the REST API and handles OAuth token refresh"
+        rationale: "MCP Bridge handles OAuth token management automatically (via tool schema authentication config). Hand-coding is unnecessary overhead for a simple pass-through. Use Bridge unless you need custom validation or transformations."
+      - text: "Modify the existing REST API to accept MCP tool invocations (add /mcp/invoke endpoint)"
+        rationale: "MCP tools and REST APIs are separate protocols. MCP uses JSON-RPC (not REST). Use MCP Bridge to create an MCP wrapper that translates MCP → REST. Don't mix protocols in one API."
+      - text: "Register the REST API directly in agent-network.yaml with protocol: REST (agents will call it via HTTP)"
+        rationale: "Agents invoke tools via MCP protocol, not REST. If you register a REST endpoint, agents won't know how to call it (no MCP contract). MCP Bridge creates the MCP wrapper that translates MCP tool calls → REST API calls."
+    correct_index: 0
+    tags: ["mcp-bridge", "tool-exposure", "no-code"]
+
+  - id: "ops-005"
+    domain_id: 8
+    objective_id: "8.5"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.2
+    difficulty: 0.3
+    scenario: |
+      A Mule application has three property files: config.yaml (in JAR), env-config.yaml (external, per environment), and Runtime Manager encrypted properties. The same property key 'api.timeout' appears in all three with values: 5000 (config.yaml), 8000 (env-config.yaml), 10000 (Runtime Manager).
+    stem: "What value does the app use at runtime?"
+    options:
+      - text: "5000 — config.yaml is loaded first"
+        rationale: "Property precedence is not load order — it's override order. Runtime Manager > env-config.yaml > config.yaml. The app uses 10000 (Runtime Manager overrides everything)."
+      - text: "10000 — Runtime Manager properties override all others"
+        rationale: "CORRECT. Three-tier property hierarchy: config.yaml (defaults in JAR) < env-config.yaml (per-environment overrides) < Runtime Manager (secrets + emergency overrides). Runtime Manager has highest precedence."
+      - text: "8000 — env-config.yaml is environment-specific and overrides config.yaml"
+        rationale: "env-config.yaml does override config.yaml (8000 > 5000), but Runtime Manager overrides both (10000 > 8000 > 5000). Runtime Manager is the top tier (highest precedence)."
+      - text: "The app throws an error — duplicate property keys are not allowed"
+        rationale: "Duplicate keys across tiers are intentional (override pattern). The app merges properties with precedence: Runtime Manager > env-config > config.yaml. No error thrown."
+    correct_index: 1
+    tags: ["property-hierarchy", "runtime-manager", "override-precedence"]
+
+  - id: "ops-006"
+    domain_id: 8
+    objective_id: "8.6"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.5
+    difficulty: 0.7
+    scenario: |
+      A Dead Letter Queue (DLQ) shows 50 failures in the past hour: BEDROCK_UNAVAILABLE (30), POLICY_REJECTED (15), PAYLOAD_INVALID (5). All BEDROCK_UNAVAILABLE failures have retryable=true. All POLICY_REJECTED failures have retryable=false. PAYLOAD_INVALID failures have retryable=false.
+    stem: "Which failures should be retried from the DLQ?"
+    options:
+      - text: "All 50 — DLQ replay should attempt all failures"
+        rationale: "Retrying retryable=false failures (POLICY_REJECTED, PAYLOAD_INVALID) will produce the same error (policy still fails, payload still invalid). Only retry retryable=true failures (transient issues like BEDROCK_UNAVAILABLE)."
+      - text: "Only BEDROCK_UNAVAILABLE (30) — retryable=true means transient failure"
+        rationale: "CORRECT. BEDROCK_UNAVAILABLE is transient (Bedrock was down, now recovered). Retry these 30. POLICY_REJECTED is permanent (policy rule failed, won't change on retry). PAYLOAD_INVALID is permanent (bad data). Don't retry retryable=false."
+      - text: "Only POLICY_REJECTED (15) — policy rules might have changed, worth retrying"
+        rationale: "If policy rules changed, the business team would notify operations (not automatic retry). Retrying POLICY_REJECTED without confirmation wastes resources (same error). Only retry when you KNOW the failure cause is resolved."
+      - text: "Only PAYLOAD_INVALID (5) — smallest batch, least risk"
+        rationale: "Batch size doesn't determine retry eligibility. PAYLOAD_INVALID is permanent (bad data won't fix itself on retry). Only retry transient failures (retryable=true), regardless of batch size."
+    correct_index: 1
+    tags: ["dlq-retry", "retryable-flag", "transient-vs-permanent"]
+# 6 Hard Items (b ≥ 1.0)
+# 4-5 sentence scenarios, high cognitive load, multi-domain integration
+
+  - id: "arch-008"
+    domain_id: 1
+    objective_id: "1.7"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.8
+    difficulty: 1.2
+    scenario: |
+      An agentic returns processing pipeline has four services: (1) slack-agent-router (Experience layer) receives Slack events, (2) ai-orchestrator (Process layer) calls AI Gateway for refund decisions, (3) data-cloud-sapi (System API) queries customer profiles, (4) service-cloud-sapi (System API) creates Cases. The architect implements circuit breakers: CB-A in slack-agent-router around ai-orchestrator, CB-B in ai-orchestrator around AI Gateway, CB-C in ai-orchestrator around data-cloud-sapi. The AI Gateway starts failing (HTTP 503, 100% failure rate for 2 minutes).
+
+      Given circuit breaker thresholds of 3 consecutive failures with 60-second cooldown, which circuit breakers will open, and in what order?
+    stem: "Which circuit breakers open and in what order?"
+    options:
+      - text: "CB-B opens first (wraps AI Gateway), then CB-A opens (wraps ai-orchestrator which is now failing)"
+        rationale: "CORRECT. CB-B detects AI Gateway failures (3 consecutive 503s) and opens (stops calling AI Gateway). Now ai-orchestrator returns errors to slack-agent-router (because AI Gateway is unavailable). After 3 consecutive errors from ai-orchestrator, CB-A opens. Cascade: downstream failure → upstream circuit opens."
+      - text: "Only CB-B opens (wraps AI Gateway) — CB-A doesn't open because ai-orchestrator itself is healthy"
+        rationale: "CB-A tracks failures from ai-orchestrator's perspective. If ai-orchestrator returns errors (because its AI Gateway call failed), those count as failures for CB-A. CB-A opens when ai-orchestrator fails 3 times, regardless of why it failed."
+      - text: "All three circuit breakers open — CB-B, CB-A, CB-C (AI Gateway failure cascades to all services)"
+        rationale: "CB-C wraps data-cloud-sapi (unrelated to AI Gateway). data-cloud-sapi is healthy, so CB-C stays closed. Only CB-B (AI Gateway) and CB-A (ai-orchestrator, which depends on AI Gateway) open. Failures don't cascade to unrelated dependencies."
+      - text: "CB-A opens first (wraps ai-orchestrator), then CB-B opens (wraps AI Gateway)"
+        rationale: "CB-B detects failures first (it's closest to the AI Gateway). CB-B opens after 3 consecutive 503s from AI Gateway. Then CB-A opens after ai-orchestrator fails 3 times (because AI Gateway is unavailable). Order: downstream circuit first, then upstream."
+    correct_index: 0
+    tags: ["circuit-breaker-cascade", "multi-layer-failure", "dependency-chain"]
+
+  - id: "proc-009"
+    domain_id: 3
+    objective_id: "3.9"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.9
+    difficulty: 1.4
+    scenario: |
+      An ai-orchestrator pipeline processes a $600 refund request. Stage 1: Query Data Cloud for customer profile → LoyaltyTier="Gold", ChurnRisk=85 (high). Stage 2: Call AI model → decision="DENY", confidence=0.88, reasoning="High churn risk, customer might exploit refunds". Stage 3: Evaluate deterministic policy → refund amount $600 is above $500 limit (POLICY_FAIL). Stage 4 (mutation gate): Check identityResolved=true, payloadValid=true, aiDecision="DENY", policyPassed=false.
+
+      The business rule states: "If AI says DENY and policy also fails, always DENY. If AI says APPROVE but policy fails, override to DENY. If AI says DENY but policy passes, route to human review (AI might be too conservative)."
+    stem: "Given this request, what should the orchestrator do?"
+    options:
+      - text: "DENY immediately — both AI (DENY) and policy (FAIL) agree on rejection"
+        rationale: "CORRECT. AI decision: DENY (confidence 0.88). Policy decision: FAIL (amount > limit). Both gates say DENY → final decision is DENY. No need for human review when both deterministic policy and AI agree. Mutation gate blocks execution."
+      - text: "Route to human review — AI confidence 0.88 is below 0.90 threshold, needs review"
+        rationale: "Human review is for borderline cases (AI says DENY but policy passes). Here, policy also fails (amount > $500 limit). When both AI and policy agree on DENY, no human review needed — it's a clear rejection."
+      - text: "DENY immediately — policy failure alone is sufficient, ignore AI decision"
+        rationale: "While policy failure is sufficient to DENY (policy overrides AI), the question asks what the orchestrator should do given the business rule. The rule says 'AI DENY + policy FAIL = DENY immediately' (which is true here). Answer is correct but reasoning should reference both factors."
+      - text: "Route to human review — customer is Gold tier with high churn risk (special case)"
+        rationale: "Gold tier + high churn risk is contextual information for the AI decision. It doesn't override deterministic policy (amount > $500 limit). Human review is for 'AI DENY + policy PASS' (not this case). Here: both DENY → reject immediately."
+    correct_index: 0
+    tags: ["guided-determinism", "multi-factor-decision", "policy-ai-alignment"]
+
+  - id: "proc-010"
+    domain_id: 3
+    objective_id: "3.10"
+    cc_level: 3
+    status: "active"
+    discrimination: 2.0
+    difficulty: 1.6
+    scenario: |
+      An ai-orchestrator has a circuit breaker (CB-AI) around the AI Gateway with threshold=3, cooldown=60s. At time T=0, the orchestrator processes 10 requests sequentially. Requests 1-5 succeed (AI Gateway responds in <2s). Request 6 times out after 5s (timeout configured). Request 7 times out after 5s. Request 8 times out after 5s. CB-AI opens. Request 9 arrives at T=16s and sees CB-AI open (fails immediately). Request 10 arrives at T=65s (after cooldown).
+
+      What happens to request 10?
+    stem: "What happens to request 10 at T=65s?"
+    options:
+      - text: "Request 10 fails immediately — circuit is still open (cooldown starts from when circuit opened, not from last request)"
+        rationale: "Cooldown starts when the circuit opens (after request 8, at T~15s). After 60 seconds (T=75s), the circuit enters HALF_OPEN. Request 10 at T=65s arrives during the cooldown period (before T=75s), so it fails immediately."
+      - text: "Request 10 is attempted (probe request) — circuit enters HALF_OPEN state after cooldown"
+        rationale: "Circuit enters HALF_OPEN after cooldown (60s from when it opened). Circuit opened at T~15s (after request 8). Cooldown ends at T=75s. Request 10 at T=65s is 10 seconds BEFORE cooldown ends, so circuit is still OPEN. Request 10 fails immediately."
+      - text: "Request 10 succeeds — cooldown elapsed (65s > 60s cooldown period)"
+        rationale: "Cooldown is measured from when the circuit opened (T~15s after request 8), not from T=0. Circuit opened at T=15s. Cooldown ends at T=75s (15+60). Request 10 at T=65s is 10 seconds before cooldown ends. Circuit is still OPEN → request 10 fails."
+      - text: "Request 10 is attempted (probe) — enough time has passed since the last failed request (request 9 at T=16s)"
+        rationale: "HALF_OPEN state is triggered by cooldown period (60s from circuit opening), not by time since last request. Circuit opened at T~15s. Cooldown ends at T=75s. Request 10 at T=65s arrives before cooldown ends → circuit is OPEN, request fails immediately."
+    correct_index: 0
+    tags: ["circuit-breaker-timing", "cooldown-calculation", "state-transitions"]
+
+  - id: "sys-008"
+    domain_id: 4
+    objective_id: "4.7"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.7
+    difficulty: 1.3
+    scenario: |
+      A System API receives POST /refunds with idempotency key derived from hash(customerId + orderNumber). Request A arrives at T=0 with key="abc123", starts processing (queries Data Cloud, calls Bedrock for AI decision, evaluates policy — takes 8 seconds total). At T=2 (while Request A is still processing), Request B arrives with the same key="abc123" (duplicate/retry). The System API stores the idempotency key in Object Store with TTL=3600s BEFORE starting processing (at T=0 for Request A).
+
+      What should happen to Request B at T=2?
+    stem: "What happens to Request B at T=2?"
+    options:
+      - text: "Request B returns 200 OK immediately with the result from Request A (even though Request A hasn't finished yet)"
+        rationale: "Request A hasn't finished yet (finishes at T=8s). The idempotency key exists in Object Store but no result is available yet. Request B should wait or poll for Request A's result, or return HTTP 202 Accepted (processing)."
+      - text: "Request B waits until Request A finishes (at T=8s), then returns the same result as Request A"
+        rationale: "CORRECT. Idempotency for in-flight requests: Request B sees key exists (Request A is processing), waits for Request A to complete (T=8s), then returns the same result. This prevents duplicate processing and ensures both requests get consistent results."
+      - text: "Request B returns HTTP 409 Conflict — duplicate request is already being processed"
+        rationale: "HTTP 409 is for conflicts (e.g., trying to create a resource that already exists). For idempotency, don't return an error — return the same result as the original request. Request B should wait for Request A and return its result."
+      - text: "Request B processes independently (queries Data Cloud again, calls Bedrock again) because Request A hasn't stored a result yet"
+        rationale: "This violates idempotency — both requests would call Bedrock, create duplicate refunds, waste resources. The idempotency key was stored at T=0 (before processing). Request B should detect the key exists and wait for Request A's result."
+    correct_index: 1
+    tags: ["idempotency", "in-flight-requests", "concurrency"]
+
+  - id: "sf-007"
+    domain_id: 6
+    objective_id: "6.7"
+    cc_level: 3
+    status: "active"
+    discrimination: 1.8
+    difficulty: 1.5
+    scenario: |
+      A Data Cloud administrator configures Identity Resolution with three data sources: Salesforce CRM (Contacts with Email field), Marketing Cloud (Subscribers with EmailAddress field), and Service Cloud (Cases with CustomerEmail__c field). The mapping is: Contact.Email → ContactPointEmail.EmailAddress, Contact.Id → ContactPointEmail.PartyId. After ingestion, the dashboard shows 5,000 CRM Contacts, 3,000 Marketing Cloud Subscribers, 2,000 Service Cloud Cases. Identity Resolution produces 5,000 Unified Individuals. The administrator expected 8,000 Individuals (all unique customers from all three sources).
+
+      What is the problem with the mapping configuration?
+    stem: "Why did Identity Resolution produce 5,000 Individuals instead of 8,000?"
+    options:
+      - text: "Only CRM Contacts are mapped to ContactPointEmail — Marketing Cloud and Service Cloud data sources are not mapped"
+        rationale: "CORRECT. The mapping only includes Contact.Email → ContactPointEmail.EmailAddress. Marketing Cloud Subscribers and Service Cloud Cases are not mapped to ContactPointEmail or Individual DMOs. Identity Resolution only processes mapped sources. Without mapping, those 3,000 + 2,000 records are ignored."
+      - text: "The match rule requires exact email match — Marketing Cloud and Service Cloud emails don't match CRM emails"
+        rationale: "If all three sources were mapped and match rules found no matches, you'd get 8,000 Individuals (no overlap). But you got 5,000 (exactly the CRM count), which means only CRM is mapped. Marketing Cloud and Service Cloud aren't participating in Identity Resolution."
+      - text: "The reconciliation rule 'CRM source priority' causes Marketing Cloud and Service Cloud records to be merged into CRM Individuals"
+        rationale: "Reconciliation rules determine which field VALUE to use (e.g., which email if CRM and Marketing Cloud both provide one). They don't merge records into fewer Individuals — that's match rules. 5,000 Individuals = only CRM is mapped."
+      - text: "Identity Resolution has a 5,000-record limit — Marketing Cloud and Service Cloud records are queued for the next batch"
+        rationale: "Identity Resolution processes all ingested records (no hard limit at 5,000). Getting exactly 5,000 Individuals (the CRM count) indicates only CRM is mapped. Marketing Cloud and Service Cloud need explicit field mappings to participate in Identity Resolution."
+    correct_index: 0
+    tags: ["data-cloud", "multi-source-mapping", "identity-resolution-scope"]
+
+  - id: "gov-007"
+    domain_id: 7
+    objective_id: "7.7"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.9
+    difficulty: 1.4
+    scenario: |
+      An enterprise has 15 AI agents across three teams: Team A (5 agents, development stage, should use Claude 3 Haiku for cost), Team B (7 agents, production, must use Claude 3 Opus for quality), Team C (3 agents, internal tools, can use any model). All agents route through the same Omni Gateway instance. The architect wants to enforce model restrictions at the gateway level based on team membership.
+
+      Each agent's requests include a custom header: x-team-id (values: "team-a", "team-b", "team-c"). How should the gateway policy enforce model restrictions?
+    stem: "How should the gateway enforce model restrictions per team?"
+    options:
+      - text: "Create three separate Omni Gateway instances (one per team) with different model allowlists, route agents to their team's gateway"
+        rationale: "This works but requires managing three gateway instances (more operational overhead, more cost). A single gateway with conditional policy based on x-team-id is simpler (one gateway, one policy with team-based rules)."
+      - text: "Create one gateway policy with conditional logic: if x-team-id='team-a' require Haiku, if 'team-b' require Opus, if 'team-c' allow any"
+        rationale: "CORRECT. Custom gateway policy inspects x-team-id header, validates 'model' parameter based on team rules. Team A requests with model != Haiku → HTTP 403. Team B requests with model != Opus → HTTP 403. Team C requests → allow any model. Centralized, scalable, single gateway."
+      - text: "Store team-model mappings in a Salesforce custom object, have each agent query it before calling the gateway"
+        rationale: "This requires every agent to query Salesforce before each LLM call (adds latency, requires database access). Platform-level enforcement (gateway policy) is automatic, faster, and doesn't require agents to 'opt in'."
+      - text: "Configure Agent Fabric role-based access control (RBAC): Team A role → Haiku only, Team B role → Opus only, Team C role → all models"
+        rationale: "Agent Fabric (as of 2024) doesn't have built-in RBAC for model restrictions. Custom gateway policies (option B) are the standard way to enforce conditional logic based on headers/metadata. This would be a nice feature but doesn't exist yet."
+    correct_index: 1
+    tags: ["conditional-policy", "multi-team-governance", "header-based-routing"]
+# 6 Exhibit Items (mixed difficulty)
+# "Refer to the exhibit..." pattern with code/config/diagrams
+
+  - id: "sys-009"
+    domain_id: 4
+    objective_id: "4.8"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.3
+    difficulty: 0.2
+    scenario: |
+      Refer to the exhibit. This RAML specification defines a refunds API.
+
+      ```yaml
+      /refunds:
+        /{orderId}:
+          post:
+            body:
+              application/json:
+                properties:
+                  amount:
+                    type: number
+                    required: true
+                  reason:
+                    type: string
+                    required: true
+            responses:
+              201:
+                body:
+                  application/json:
+                    properties:
+                      refundId: string
+                      status: string
+      ```
+
+      According to this specification, what is the correct URI to create a refund for order ID "ORD-5001"?
+    stem: "What is the correct URI for order 'ORD-5001'?"
+    options:
+      - text: "POST /refunds/ORD-5001"
+        rationale: "CORRECT. The RAML spec defines /refunds/{orderId} → POST /refunds/ORD-5001. The orderId is a URI parameter (path variable), not a query parameter or body field."
+      - text: "POST /refunds?orderId=ORD-5001"
+        rationale: "The spec defines {orderId} as a path parameter (/refunds/{orderId}), not a query parameter. Query parameters use ? syntax. This URI doesn't match the RAML spec."
+      - text: "POST /refunds with body: {\"orderId\": \"ORD-5001\", \"amount\": 450, \"reason\": \"...\"}"
+        rationale: "The orderId is in the URI path (/refunds/{orderId}), not the request body. The body contains amount and reason (per RAML spec), but orderId goes in the path."
+      - text: "POST /refunds/{orderId} (literal, with curly braces)"
+        rationale: "{orderId} is a placeholder in the RAML spec. In the actual HTTP request, substitute the placeholder with the value: /refunds/ORD-5001 (no curly braces)."
+    correct_index: 0
+    tags: ["raml", "uri-construction", "path-parameters"]
+
+  - id: "exp-009"
+    domain_id: 2
+    objective_id: "2.8"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.4
+    difficulty: 0.5
+    scenario: |
+      Refer to the exhibit. This Mule XML flow processes Slack events.
+
+      ```xml
+      <flow name="slack-webhook">
+        <http:listener path="/slack/events" config-ref="HTTP_Listener_config"/>
+        <logger message="Event received: #[payload.event.type]"/>
+        <choice>
+          <when expression="#[payload.type == 'url_verification']">
+            <set-payload value="#[payload.challenge]"/>
+          </when>
+          <when expression="#[payload.event.type == 'app_mention']">
+            <flow-ref name="process-app-mention"/>
+          </when>
+          <otherwise>
+            <set-payload value='{"ok": true}'/>
+          </otherwise>
+        </choice>
+      </flow>
+      ```
+
+      According to this flow, what happens when payload.type == "event_callback" and payload.event.type == "app_mention"?
+    stem: "What happens for event_callback with app_mention?"
+    options:
+      - text: "The flow calls process-app-mention (matches second when condition)"
+        rationale: "CORRECT. First when checks payload.type == 'url_verification' (false). Second when checks payload.event.type == 'app_mention' (true) → calls process-app-mention. Choice evaluates conditions sequentially until one matches."
+      - text: "The flow returns {\"ok\": true} (falls through to otherwise)"
+        rationale: "The second when condition checks payload.event.type == 'app_mention' (true), so it matches before reaching otherwise. otherwise only executes if no when conditions match."
+      - text: "The flow returns the challenge string (matches first when condition)"
+        rationale: "First when checks payload.type == 'url_verification'. For event_callback events, payload.type is 'event_callback' (not 'url_verification'), so this condition is false."
+      - text: "The flow logs the event but doesn't process it (no matching condition)"
+        rationale: "The second when condition matches (payload.event.type == 'app_mention'). The flow calls process-app-mention. The otherwise block is NOT executed when a when condition matches."
+    correct_index: 0
+    tags: ["mule-xml", "choice-router", "conditional-flow"]
+
+  - id: "proc-011"
+    domain_id: 3
+    objective_id: "3.11"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.2
+    difficulty: 0.4
+    scenario: |
+      Refer to the exhibit. This JSON payload is the response from an AI Gateway call.
+
+      ```json
+      {
+        "decision": "APPROVE",
+        "confidence": 0.87,
+        "reasoning": "Customer is Gold tier with good payment history",
+        "metadata": {
+          "model": "claude-3-opus-20240229",
+          "tokens_used": 450
+        }
+      }
+      ```
+
+      A DataWeave transformation must extract the decision and confidence. According to this payload structure, what is the correct DataWeave expression?
+    stem: "What DataWeave expression extracts decision and confidence?"
+    options:
+      - text: "{decision: payload.decision, confidence: payload.confidence}"
+        rationale: "CORRECT. The payload has decision and confidence at the root level. DataWeave syntax: payload.fieldName accesses root-level fields. Result: {decision: 'APPROVE', confidence: 0.87}."
+      - text: "{decision: payload.metadata.decision, confidence: payload.metadata.confidence}"
+        rationale: "decision and confidence are at the root level (not inside metadata). metadata contains model and tokens_used. Accessing payload.metadata.decision returns null."
+      - text: "{decision: payload.'decision', confidence: payload.'confidence'}"
+        rationale: "Single quotes are for field names with special characters (e.g., 'field-name', 'field.with.dot'). For simple field names (decision, confidence), quotes are optional. payload.decision works (no quotes needed)."
+      - text: "{decision: payload[0].decision, confidence: payload[0].confidence}"
+        rationale: "payload[0] is array access syntax. The payload is an object (not an array). Use payload.decision (dot notation for objects), not payload[0] (index notation for arrays)."
+    correct_index: 0
+    tags: ["dataweave", "json-extraction", "payload-access"]
+
+  - id: "gov-008"
+    domain_id: 7
+    objective_id: "7.8"
+    cc_level: 2
+    status: "pretest"
+    discrimination: 1.5
+    difficulty: 0.6
+    scenario: |
+      Refer to the exhibit. This agent-network.yaml entry defines an MCP tool for creating Salesforce Cases.
+
+      ```yaml
+      tools:
+        - name: create_case
+          description: Create a new Salesforce Service Cloud Case
+          protocol: mcp
+          endpoint: https://mcp-server.example.com/tools/create-case
+          authentication:
+            type: oauth2
+            tokenUrl: https://login.salesforce.com/services/oauth2/token
+            clientId: ${CLIENT_ID}
+            clientSecret: ${CLIENT_SECRET}
+          parameters:
+            subject:
+              type: string
+              required: true
+            description:
+              type: string
+              required: true
+            priority:
+              type: string
+              enum: [Low, Medium, High]
+              default: Medium
+      ```
+
+      According to this schema, which of the following tool invocations is valid?
+    stem: "Which tool invocation is valid per the schema?"
+    options:
+      - text: "{\"subject\": \"Refund request\", \"description\": \"Customer wants refund for order 5001\", \"priority\": \"High\"}"
+        rationale: "CORRECT. All required fields present (subject, description). priority is optional (has default) but provided value 'High' is in the enum [Low, Medium, High]. This matches the schema."
+      - text: "{\"subject\": \"Refund request\", \"priority\": \"High\"}"
+        rationale: "Missing required field 'description'. The schema specifies description as required: true. This invocation is invalid (would be rejected by the MCP server)."
+      - text: "{\"subject\": \"Refund request\", \"description\": \"Customer wants refund\", \"priority\": \"Urgent\"}"
+        rationale: "priority value 'Urgent' is not in the enum [Low, Medium, High]. The schema restricts priority to these three values. 'Urgent' would be rejected (invalid enum value)."
+      - text: "{\"description\": \"Customer wants refund for order 5001\", \"priority\": \"Medium\"}"
+        rationale: "Missing required field 'subject'. The schema specifies subject as required: true. This invocation is invalid even though description and priority are present."
+    correct_index: 0
+    tags: ["agent-network-yaml", "mcp-tool-schema", "parameter-validation"]
+
+  - id: "sf-008"
+    domain_id: 6
+    objective_id: "6.8"
+    cc_level: 2
+    status: "active"
+    discrimination: 1.3
+    difficulty: 0.3
+    scenario: |
+      Refer to the exhibit. This is the Data Cloud DMO schema for ssot__Individual__dlm.
+
+      ```
+      DMO: ssot__Individual__dlm
+      Fields:
+        - PartyId (Text, Primary Key)
+        - FirstName (Text)
+        - LastName (Text)
+        - Loyalty_Tier (Text, Custom Field)
+        - Churn_Risk_Score (Number, Custom Field)
+      ```
+
+      A System API needs to query this DMO to retrieve FirstName, LastName, and the loyalty tier for a customer with PartyId = "P123". According to this schema, what is the correct SOQL query?
+    stem: "What is the correct SOQL query?"
+    options:
+      - text: "SELECT FirstName, LastName, Loyalty_Tier FROM ssot__Individual__dlm WHERE PartyId = 'P123'"
+        rationale: "CORRECT. The custom field API name is 'Loyalty_Tier' (underscore, no __c suffix). SOQL is case-sensitive for field names. Match the exact field name from the DMO schema."
+      - text: "SELECT FirstName, LastName, LoyaltyTier__c FROM ssot__Individual__dlm WHERE PartyId = 'P123'"
+        rationale: "The schema shows the field name as 'Loyalty_Tier' (not 'LoyaltyTier__c'). Data Cloud custom fields don't always use __c suffix. Using the wrong field name returns zero rows (silent failure). Check DMO schema for exact names."
+      - text: "SELECT FirstName, LastName, Loyalty_Tier FROM ssot__Individual__dlm WHERE PartyId == 'P123'"
+        rationale: "SOQL uses single = for equality (not ==). Double equals (==) is programming language syntax (JavaScript, Java). This query has a syntax error."
+      - text: "SELECT FirstName, LastName, LoyaltyTier FROM ssot__Individual__dlm WHERE PartyId = 'P123'"
+        rationale: "The field name is 'Loyalty_Tier' (with underscore), not 'LoyaltyTier' (no underscore). Field names are case- and punctuation-sensitive in Data Cloud. This query returns zero rows (field name mismatch)."
+    correct_index: 0
+    tags: ["data-cloud-soql", "dmo-schema", "field-name-precision"]
+
+  - id: "exp-010"
+    domain_id: 2
+    objective_id: "2.9"
+    cc_level: 3
+    status: "pretest"
+    discrimination: 1.6
+    difficulty: 0.9
+    scenario: |
+      Refer to the exhibit. This is a circuit breaker state diagram with three states: CLOSED, OPEN, HALF_OPEN.
+
+      ```
+      [CLOSED] --threshold failures--> [OPEN] --cooldown elapsed--> [HALF_OPEN]
+         ^                                                                |
+         |                                                                |
+         +---------------probe success---------------------------------+
+                                                                          |
+      [OPEN] <-----------------------probe failure---------------------+
+      ```
+
+      A circuit breaker is configured with threshold=3, cooldown=60s. At T=0, the circuit is CLOSED. Requests 1-5 succeed. Requests 6-8 fail (3 consecutive failures → circuit opens at T=15s). At T=75s (60s cooldown elapsed), request 9 is sent as a probe. The probe succeeds.
+
+      According to the state diagram, what is the circuit's state after request 9 succeeds?
+    stem: "What is the circuit state after the successful probe?"
+    options:
+      - text: "CLOSED — probe success transitions from HALF_OPEN to CLOSED"
+        rationale: "CORRECT. After cooldown (T=75s), circuit enters HALF_OPEN. Request 9 (probe) succeeds → circuit transitions to CLOSED (diagram shows 'probe success' arrow from HALF_OPEN to CLOSED). Subsequent requests proceed normally."
+      - text: "HALF_OPEN — probe success keeps the circuit in HALF_OPEN (testing mode)"
+        rationale: "HALF_OPEN is a temporary state (one probe request). If probe succeeds, circuit closes (returns to normal). If probe fails, circuit reopens. HALF_OPEN doesn't persist after probe completes."
+      - text: "OPEN — probe success doesn't change state, circuit stays OPEN until manual reset"
+        rationale: "The diagram shows 'probe success' arrow from HALF_OPEN to CLOSED. Probe success closes the circuit (assumes downstream is healthy). No manual reset needed. Circuit automatically recovers."
+      - text: "CLOSED — but requires 3 consecutive successful requests before fully closing (not just one probe)"
+        rationale: "Standard circuit breaker pattern: one successful probe in HALF_OPEN → transition to CLOSED. Some implementations require N successful probes, but the standard pattern (shown in diagram) uses one probe. Diagram shows direct transition on 'probe success'."
+    correct_index: 0
+    tags: ["circuit-breaker-diagram", "state-transitions", "half-open-probe"]
